@@ -1,0 +1,11 @@
+numpy
+pandas
+scipy
+scikit-learn
+matplotlib
+joblib
+folktables
+fastapi
+uvicorn
+httpx
+pytest
