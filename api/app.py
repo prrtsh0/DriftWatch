@@ -18,6 +18,49 @@ ART = Path(os.getenv("DRIFTWATCH_ARTIFACTS", "artifacts"))
 state = {}
 
 
+def _seed_demo_history() -> None:
+    """If no drift checks exist yet, populate the dashboard with a small, clearly
+    labelled demo history so the homepage isn't empty on first load. Uses the
+    loaded reference sample: a benign batch (ok), a mild shift (warn) and a
+    strong shift (alert)."""
+    if load_history():
+        return
+    monitor = state.get("monitor")
+    model = state.get("model")
+    if monitor is None:
+        return
+    ref = monitor.reference
+    n = min(2000, len(ref))
+    from datetime import datetime, timedelta
+    base = datetime.now()
+
+    last = {}
+
+    def run(label, frame, minutes_ago):
+        nonlocal last
+        result = monitor.check(frame)
+        if model is not None and state.get("ref_prob_mean") is not None:
+            result["pred_shift"] = abs(
+                float(model.predict_proba(frame)[:, 1].mean()) - state["ref_prob_mean"])
+        else:
+            result["pred_shift"] = None
+        result["label"] = label
+        result["source"] = "demo"
+        result["timestamp"] = (base - timedelta(minutes=minutes_ago)).isoformat(timespec="seconds")
+        append_history(result)
+        last = result
+
+    run("baseline traffic (demo)", ref.sample(n, random_state=1), 30)
+    mild = ref.sample(n, random_state=2).copy(); mild["AGEP"] = mild["AGEP"] + 4
+    run("mild age shift (demo)", mild, 20)
+    strong = ref.sample(n, random_state=3).copy()
+    strong["AGEP"] = strong["AGEP"] + 14
+    strong["SCHL"] = strong["SCHL"] + 8
+    strong["RELP"] = strong["RELP"] + 20
+    run("strong coding shift (demo)", strong, 10)
+    state["latest"] = last
+
+
 @asynccontextmanager
 async def lifespan(app):
     if (ART / "model.joblib").exists():
@@ -27,6 +70,7 @@ async def lifespan(app):
             import json
             with open(ART / "metrics.json") as fh:
                 state["ref_prob_mean"] = json.load(fh).get("ref_prob_mean")
+        _seed_demo_history()
     yield
 
 
