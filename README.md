@@ -9,7 +9,7 @@ A monitoring system for deployed ML models, plus a study of whether label-free d
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-python -m pytest -q                 # 7 tests should pass
+python -m pytest -q                 # all tests should pass
 ```
 
 ## Run order
@@ -31,6 +31,67 @@ python -m pytest -q                 # 7 tests should pass
 | driftwatch/monitor.py | the live drift checker used by the API (warn at PSI 0.1, alert at 0.25) |
 | api/app.py | FastAPI service: /predict and /drift |
 | tests/ | unit tests including a PSI hand-calculation |
+
+## Live API + dashboard
+
+The monitoring logic ships as a FastAPI service. Start it locally:
+
+```powershell
+python train_service_model.py        # (optionally --synthetic) writes artifacts/
+python -m uvicorn api.app:app --reload
+# open http://127.0.0.1:8000/docs  (Swagger UI) or /dashboard
+```
+
+Endpoints:
+| Route | Purpose |
+|---|---|
+| `GET /health` | service status, whether a model is loaded, feature list |
+| `POST /predict` | probability of income > $50k + binary prediction for a batch |
+| `POST /drift` | compare a new batch against the stored reference: PSI/KS/domain-AUC, status `ok/warn/alert` |
+| `GET /dashboard` | self-contained HTML dashboard (server-rendered charts, no CDN) |
+| `GET /drift-data` | JSON for a custom frontend |
+
+Example request (`/predict` — all 10 features required):
+
+```bash
+curl -X POST http://127.0.0.1:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"records":[{"AGEP":45,"COW":5,"SCHL":18,"MAR":2,"OCCP":2200,"POBP":6,"RELP":0,"WKHP":40,"SEX":1,"RAC1P":1}]}'
+```
+
+```bash
+curl -X POST http://127.0.0.1:8000/drift \
+  -H "Content-Type: application/json" \
+  -d '{"records":[{...10 features...},{...}]}'
+```
+
+Offline check of a new CSV or a census state: `python check_new_data.py my_rows.csv` or `python check_new_data.py --state NY`.
+
+> **Important limit:** the monitor and `/drift` see only *inputs*. They cannot
+> report accuracy until true labels arrive — which is exactly the gap the study
+> investigates.
+
+## Deployment (Render)
+
+The **API + dashboard** are deployable as a demo service; the research/experiment
+pipeline stays local (it is a batch job, not a web service).
+
+- `render.yaml` — Render Blueprint (web service, Docker, `/health` check, auto-deploy).
+- `Dockerfile` — builds a self-contained image: it **trains a model during the
+  build** (synthetic by default, since `artifacts/` is gitignored) so the app
+  starts with a model ready.
+
+Deploy steps:
+1. Push this repo to GitHub.
+2. Render → **New → Blueprint → connect the repo** (Render reads `render.yaml`).
+3. After the build finishes, open `https://<service>.onrender.com/health`.
+
+To serve a real income model instead of the synthetic demo, build with
+`--build-arg TRAIN_FLAGS="--state CA"` (downloads ACS 2018 CA during build).
+
+> Caveats: free-tier instances sleep after ~15 min idle (cold start ~30–60s) —
+> fine for a demo, not for continuous monitoring; endpoints are unauthenticated,
+> so this is for demo/education only.
 
 ## You must be able to explain (before presenting)
 - Drift vs accuracy drop: why one can happen without the other.
