@@ -94,15 +94,15 @@ def compute_baselines(model, ref: pd.DataFrame, cur: pd.DataFrame) -> dict:
     }
 
 
-def _density_ratio(ref, cur, n=2000, seed=0, max_mult=None, cv=5):
+def _density_ratio(ref, cur, max_mult=None, cv=5, seed=0):
     """Estimate w(x) = P_cur(x) / P_ref(x) with a domain classifier (logistic on
     primary features). w = p(origin=cur) / p(origin=ref). Used for reweighting.
 
-    The classifier is **cross-fitted**: we k-fold the reference rows and, for
-    each fold, train on (reference rows outside the fold) + target rows, then
-    predict on the held-out reference fold. This yields out-of-fold probabilities
-    for EVERY reference row without the classifier having seen that row, so the
-    weights do not reflect in-sample overfitting.
+    The classifier is **cross-fitted over the FULL reference and target**: we
+    k-fold the concatenated (ref+target) rows and predict out-of-fold
+    P(origin=cur|x) for every row, so no row is scored by a model trained on it.
+    This yields a weight for EVERY reference row, so the decomposition can be
+    computed on the same full data as acc_drop and will reconcile with it.
 
     Weights are normalized to mean 1 and truncated to [1/max_mult, max_mult]
     times the mean.
@@ -112,22 +112,20 @@ def _density_ratio(ref, cur, n=2000, seed=0, max_mult=None, cv=5):
     sensitive the decomposition is to truncation (bias-variance tradeoff).
     """
     from sklearn.linear_model import LogisticRegression
-    from sklearn.model_selection import StratifiedKFold
+    from sklearn.model_selection import StratifiedKFold, cross_val_predict
     from sklearn.preprocessing import StandardScaler
 
-    r = ref.sample(min(n, len(ref)), random_state=seed).copy()   # reference rows
-    c = cur.sample(min(n, len(cur)), random_state=seed).copy()   # target rows
-    sc = StandardScaler().fit(r[FEATURES])
-    p = np.zeros(len(r))
-    kf = StratifiedKFold(n_splits=cv, shuffle=True, random_state=seed)
-    for tr_idx, va_idx in kf.split(r, r["SEX"] if "SEX" in r else np.zeros(len(r))):
-        tr = r.iloc[tr_idx]
-        va = r.iloc[va_idx]
-        Xtr = pd.concat([tr[FEATURES], c[FEATURES]])
-        ytr = np.r_[np.zeros(len(tr)), np.ones(len(c))]
-        clf = LogisticRegression(max_iter=1000).fit(sc.transform(Xtr), ytr)
-        p[va_idx] = clf.predict_proba(sc.transform(va[FEATURES]))[:, 1]
-
+    X = pd.concat([ref[FEATURES], cur[FEATURES]])
+    y = np.r_[np.zeros(len(ref)), np.ones(len(cur))]
+    sc = StandardScaler().fit(X)
+    Xs = sc.transform(X)
+    clf = LogisticRegression(max_iter=1000)
+    # out-of-fold P(origin=cur | x) for every concatenated row
+    p_all = cross_val_predict(
+        clf, Xs, y,
+        cv=StratifiedKFold(n_splits=cv, shuffle=True, random_state=seed),
+        method="predict_proba")[:, 1]
+    p = p_all[: len(ref)]                     # reference rows only
     raw = p / np.clip(1 - p, 1e-6, None)   # odds ratio ≈ P_cur/P_ref
     raw = raw / raw.mean()                  # normalize so mean = 1
 
@@ -185,27 +183,9 @@ def decompose_error_shifts(model, ref, y_ref, cur, y_cur):
     alongside it: a very low effective-sample-size ratio (e.g. < 0.2) means the
     weights are unstable and concept_share is dominated by reweighting noise.
     """
-    # Full-data reference error (matches acc_drop in experiment.py). The density
-    # ratio below is estimated on a subsample, but these errors use all rows so
-    # the decomposition's headline numbers line up with the reported accuracy drop.
-    pred_ref_full = model.predict(ref[FEATURES]) >= 0.5
-    pred_cur_full = model.predict(cur[FEATURES]) >= 0.5
-    err_home_full = float((pred_ref_full != np.asarray(y_ref)).mean())
-    err_target_full = float((pred_cur_full != np.asarray(y_cur)).mean())
-
-    # Subsample consistently so weights and errors are computed on the SAME rows
-    # (the density-ratio estimator internally subsamples to n).
-    n = 2000
-    rng = np.random.default_rng(0)
-    if len(ref) > n:
-        idx = rng.choice(len(ref), n, replace=False)
-        ref = ref.iloc[idx].copy()
-        y_ref = np.asarray(y_ref)[idx]
-    if len(cur) > n:
-        idx = rng.choice(len(cur), n, replace=False)
-        cur = cur.iloc[idx].copy()
-        y_cur = np.asarray(y_cur)[idx]
-
+    # Everything computed on the FULL data: the errors use all rows (so the
+    # decomposition reconciles exactly with acc_drop in experiment.py), and the
+    # density-ratio weights are cross-fitted over all rows too.
     pred_ref = model.predict(ref[FEATURES]) >= 0.5
     pred_cur = model.predict(cur[FEATURES]) >= 0.5
     err_home = float((pred_ref != np.asarray(y_ref)).mean())
@@ -215,8 +195,7 @@ def decompose_error_shifts(model, ref, y_ref, cur, y_cur):
     # covariate/concept split changes a lot across caps, the number is not solid.
     ratio = _density_ratio(ref, cur)
     out = {
-        "error_home": err_home_full, "error_target": err_target_full,
-        "error_home_subsample": err_home, "error_target_subsample": err_target,
+        "error_home": err_home, "error_target": err_target,
     }
     # primary (default) cap = 20
     for cap, (w, clip_fraction) in ratio.items():

@@ -64,6 +64,19 @@ def test_decompose_error_shifts_consistent():
     assert abs((res["covariate_share"] + res["concept_share"]) - total) < 1e-6
 
 
+def test_decompose_reconciles_with_full_data_acc_drop():
+    # Regression test: shares must reconcile with full-data acc_drop even when
+    # the data is larger than the old 2000-row subsample. Before the fix, the
+    # shares used subsample errors while acc_drop used full data -> mismatch.
+    X, y = load_state("CA", n_max=6000, synthetic=True)
+    X2, y2 = load_state("TX", n_max=6000, synthetic=True)
+    model = build_model("logreg").fit(X, y)
+    res = decompose_error_shifts(model, X, y, X2, y2)
+    total = res["error_target"] - res["error_home"]
+    assert abs((res["covariate_share"] + res["concept_share"]) - total) < 1e-6
+    assert abs(res["error_target"] - (y2 != (model.predict_proba(X2)[:, 1] >= 0.5)).mean()) < 1e-9
+
+
 def test_decompose_no_change_zero_shares():
     model, X, _ = _model_ref_cur()
     y = (model.predict(X) >= 0.5).astype(int)
@@ -79,8 +92,7 @@ def test_density_ratio_weights_clipped_and_reported():
     res = _density_ratio(X, X2)            # dict keyed by cap
     assert set(res) >= {10.0, 20.0, 50.0}
     w, frac = res[20.0]
-    assert len(w) == 2000                 # subsampled to n (default 2000)
-    assert len(w) <= len(X)
+    assert len(w) == len(X)               # full-data weights (reconcile w/ acc_drop)
     assert np.isfinite(w).all()
     assert w.min() >= 1.0 / 20.0 - 1e-9    # lower bound respected
     assert w.max() <= 20.0 + 1e-9           # upper bound respected
