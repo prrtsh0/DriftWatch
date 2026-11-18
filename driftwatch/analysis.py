@@ -104,6 +104,16 @@ def shift_decomposition(df):
             {"component": "norm_weights_clip_fraction (median across pairs)", "value": float(df["norm_weights_clip_fraction"].median())},
             {"component": "share of pairs with ESS ratio < 0.2", "value": float((df["norm_weights_ess_ratio"] < 0.2).mean())},
         ]
+    # Truncation-bias check: the decomposition at the two alternative caps (10, 50)
+    # vs the default (20). If concept_share moves a lot across caps, it's not solid.
+    if "concept_share_c10" in df.columns and "concept_share_c50" in df.columns:
+        rows += [
+            {"component": "concept_share at cap 10 (mean)", "value": float(df["concept_share_c10"].mean())},
+            {"component": "concept_share at cap 20 (mean, default)", "value": float(df["concept_share"].mean())},
+            {"component": "concept_share at cap 50 (mean)", "value": float(df["concept_share_c50"].mean())},
+            {"component": "max drift in concept_share across caps 10/20/50", "value": float(
+                np.ptp(df[["concept_share_c10", "concept_share", "concept_share_c50"]].mean()))},
+        ]
     return pd.DataFrame(rows)
 
 

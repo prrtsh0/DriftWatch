@@ -76,14 +76,19 @@ def test_decompose_no_change_zero_shares():
 def test_density_ratio_weights_clipped_and_reported():
     X, _ = load_state("CA", n_max=3000, synthetic=True)
     X2, _ = load_state("TX", n_max=3000, synthetic=True)
-    w, frac = _density_ratio(X, X2, max_mult=20.0)
-    assert len(w) == len(X)
+    res = _density_ratio(X, X2)            # dict keyed by cap
+    assert set(res) >= {10.0, 20.0, 50.0}
+    w, frac = res[20.0]
+    assert len(w) == 2000                 # subsampled to n (default 2000)
+    assert len(w) <= len(X)
     assert np.isfinite(w).all()
     assert w.min() >= 1.0 / 20.0 - 1e-9    # lower bound respected
     assert w.max() <= 20.0 + 1e-9           # upper bound respected
     assert 0.0 <= frac <= 1.0
     # mean is ~1 before any clipping; confirm it's still sane
     assert abs(w.mean() - 1.0) < 0.1
+    # tighter cap => more clipping, looser cap => less
+    assert res[10.0][1] >= res[20.0][1] >= res[50.0][1]
 
 
 def test_decompose_covariate_only_gives_zero_concept_share():

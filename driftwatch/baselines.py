@@ -94,33 +94,51 @@ def compute_baselines(model, ref: pd.DataFrame, cur: pd.DataFrame) -> dict:
     }
 
 
-def _density_ratio(ref, cur, n=2000, seed=0, max_mult=20.0):
+def _density_ratio(ref, cur, n=2000, seed=0, max_mult=None, cv=5):
     """Estimate w(x) = P_cur(x) / P_ref(x) with a domain classifier (logistic on
     primary features). w = p(origin=cur) / p(origin=ref). Used for reweighting.
 
+    The classifier is **cross-fitted**: we k-fold the reference rows and, for
+    each fold, train on (reference rows outside the fold) + target rows, then
+    predict on the held-out reference fold. This yields out-of-fold probabilities
+    for EVERY reference row without the classifier having seen that row, so the
+    weights do not reflect in-sample overfitting.
+
     Weights are normalized to mean 1 and truncated to [1/max_mult, max_mult]
-    times the mean. Truncation is essential: high-cardinality features
-    (POBP, OCCP) can otherwise produce extreme weights that dominate the
-    reweighted error. Returns (w, clip_fraction) where clip_fraction is the
-    share of weights that hit the upper or lower bound.
+    times the mean.
+
+    Returns dict keyed by cap -> (w, clip_fraction) where w has length = len(ref).
+    When max_mult is None it reports caps 10, 20, 50 so the reader can see how
+    sensitive the decomposition is to truncation (bias-variance tradeoff).
     """
     from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import StratifiedKFold
     from sklearn.preprocessing import StandardScaler
 
-    r = ref.sample(min(n, len(ref)), random_state=seed).copy()
-    c = cur.sample(min(n, len(cur)), random_state=seed).copy()
-    X = pd.concat([r[FEATURES], c[FEATURES]])
-    y = np.r_[np.zeros(len(r)), np.ones(len(c))]
-    sc = StandardScaler().fit(X[FEATURES])
-    Xs = sc.transform(X[FEATURES])
-    clf = LogisticRegression(max_iter=1000).fit(Xs, y)
-    p = clf.predict_proba(sc.transform(ref[FEATURES]))[:, 1]
-    w = p / np.clip(1 - p, 1e-6, None)   # odds ratio ≈ P_cur/P_ref
-    w = w / w.mean()                      # normalize so mean = 1
-    lo, hi = 1.0 / max_mult, max_mult
-    clipped = np.clip(w, lo, hi)
-    clip_fraction = float((clipped != w).mean())
-    return clipped, clip_fraction
+    r = ref.sample(min(n, len(ref)), random_state=seed).copy()   # reference rows
+    c = cur.sample(min(n, len(cur)), random_state=seed).copy()   # target rows
+    sc = StandardScaler().fit(r[FEATURES])
+    p = np.zeros(len(r))
+    kf = StratifiedKFold(n_splits=cv, shuffle=True, random_state=seed)
+    for tr_idx, va_idx in kf.split(r, r["SEX"] if "SEX" in r else np.zeros(len(r))):
+        tr = r.iloc[tr_idx]
+        va = r.iloc[va_idx]
+        Xtr = pd.concat([tr[FEATURES], c[FEATURES]])
+        ytr = np.r_[np.zeros(len(tr)), np.ones(len(c))]
+        clf = LogisticRegression(max_iter=1000).fit(sc.transform(Xtr), ytr)
+        p[va_idx] = clf.predict_proba(sc.transform(va[FEATURES]))[:, 1]
+
+    raw = p / np.clip(1 - p, 1e-6, None)   # odds ratio ≈ P_cur/P_ref
+    raw = raw / raw.mean()                  # normalize so mean = 1
+
+    caps = (10.0, 20.0, 50.0) if max_mult is None else (float(max_mult),)
+    out = {}
+    for cap in caps:
+        lo, hi = 1.0 / cap, cap
+        clipped = np.clip(raw, lo, hi)
+        clip_fraction = float((clipped != raw).mean())
+        out[cap] = (clipped, clip_fraction)
+    return out
 
 
 def decompose_error_shifts(model, ref, y_ref, cur, y_cur):
@@ -145,19 +163,39 @@ def decompose_error_shifts(model, ref, y_ref, cur, y_cur):
     alongside it: a very low effective-sample-size ratio (e.g. < 0.2) means the
     weights are unstable and concept_share is dominated by reweighting noise.
     """
+    # Subsample ref/cur consistently so weights and errors are computed on the
+    # SAME rows (the density-ratio estimator internally subsamples to n).
+    n = 2000
+    rng = np.random.default_rng(0)
+    if len(ref) > n:
+        idx = rng.choice(len(ref), n, replace=False)
+        ref = ref.iloc[idx].copy()
+        y_ref = np.asarray(y_ref)[idx]
+    if len(cur) > n:
+        idx = rng.choice(len(cur), n, replace=False)
+        cur = cur.iloc[idx].copy()
+        y_cur = np.asarray(y_cur)[idx]
+
     pred_ref = model.predict(ref[FEATURES]) >= 0.5
     pred_cur = model.predict(cur[FEATURES]) >= 0.5
     err_home = float((pred_ref != np.asarray(y_ref)).mean())
     err_target = float((pred_cur != np.asarray(y_cur)).mean())
-    w, clip_fraction = _density_ratio(ref, cur)
-    err_cov_only = float(np.average(pred_ref != np.asarray(y_ref), weights=w))
-    ess = (w.sum() ** 2) / (w ** 2).sum()
-    return {
+
+    # Decompose at several truncation caps to expose truncation bias: if the
+    # covariate/concept split changes a lot across caps, the number is not solid.
+    ratio = _density_ratio(ref, cur)
+    out = {
         "error_home": err_home, "error_target": err_target,
-        "error_cov_only": err_cov_only,
-        "covariate_share": err_cov_only - err_home,
-        "concept_share": err_target - err_cov_only,
-        "norm_weights_max": float(w.max()),
-        "norm_weights_ess_ratio": float(ess / len(w)),
-        "norm_weights_clip_fraction": clip_fraction,
     }
+    # primary (default) cap = 20
+    for cap, (w, clip_fraction) in ratio.items():
+        err_cov_only = float(np.average(pred_ref != np.asarray(y_ref), weights=w))
+        ess = (w.sum() ** 2) / (w ** 2).sum()
+        tag = "" if cap == 20.0 else f"_c{int(cap)}"
+        out[f"covariate_share{tag}"] = err_cov_only - err_home
+        out[f"concept_share{tag}"] = err_target - err_cov_only
+        out[f"error_cov_only{tag}"] = err_cov_only
+        out[f"norm_weights_max{tag}"] = float(w.max())
+        out[f"norm_weights_ess_ratio{tag}"] = float(ess / len(w))
+        out[f"norm_weights_clip_fraction{tag}"] = clip_fraction
+    return out
