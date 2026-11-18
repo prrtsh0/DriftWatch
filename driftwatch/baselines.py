@@ -141,6 +141,28 @@ def _density_ratio(ref, cur, n=2000, seed=0, max_mult=None, cv=5):
     return out
 
 
+def _share_bootstrap_se(pred_ref, y_ref, pred_cur, y_cur, w, n_boot=200, seed=0):
+    """Bootstrap standard error for covariate_share and concept_share.
+
+    Resamples the (prediction, label, weight) rows of the reference and target
+    subsamples (with replacement), recomputes the two shares each time, and
+    returns their standard deviations. This quantifies the sampling noise in the
+    decomposition (the reviewer asked for a CI/SE; SE is cheaper and adequate).
+    """
+    rng = np.random.default_rng(seed)
+    n_ref, n_cur = len(w), len(pred_cur)
+    cov_shares, concept_shares = [], []
+    for _ in range(n_boot):
+        ir = rng.integers(0, n_ref, n_ref)
+        ic = rng.integers(0, n_cur, n_cur)
+        err_home = float((pred_ref[ir] != y_ref[ir]).mean())
+        err_target = float((pred_cur[ic] != y_cur[ic]).mean())
+        err_cov_only = float(np.average(pred_ref[ir] != y_ref[ir], weights=w[ir]))
+        cov_shares.append(err_cov_only - err_home)
+        concept_shares.append(err_target - err_cov_only)
+    return float(np.std(cov_shares)), float(np.std(concept_shares))
+
+
 def decompose_error_shifts(model, ref, y_ref, cur, y_cur):
     """Decompose the accuracy/error *increase* into a covariate-shift part and a
     concept-shift part using importance reweighting (a standard technique for
@@ -163,8 +185,16 @@ def decompose_error_shifts(model, ref, y_ref, cur, y_cur):
     alongside it: a very low effective-sample-size ratio (e.g. < 0.2) means the
     weights are unstable and concept_share is dominated by reweighting noise.
     """
-    # Subsample ref/cur consistently so weights and errors are computed on the
-    # SAME rows (the density-ratio estimator internally subsamples to n).
+    # Full-data reference error (matches acc_drop in experiment.py). The density
+    # ratio below is estimated on a subsample, but these errors use all rows so
+    # the decomposition's headline numbers line up with the reported accuracy drop.
+    pred_ref_full = model.predict(ref[FEATURES]) >= 0.5
+    pred_cur_full = model.predict(cur[FEATURES]) >= 0.5
+    err_home_full = float((pred_ref_full != np.asarray(y_ref)).mean())
+    err_target_full = float((pred_cur_full != np.asarray(y_cur)).mean())
+
+    # Subsample consistently so weights and errors are computed on the SAME rows
+    # (the density-ratio estimator internally subsamples to n).
     n = 2000
     rng = np.random.default_rng(0)
     if len(ref) > n:
@@ -185,17 +215,25 @@ def decompose_error_shifts(model, ref, y_ref, cur, y_cur):
     # covariate/concept split changes a lot across caps, the number is not solid.
     ratio = _density_ratio(ref, cur)
     out = {
-        "error_home": err_home, "error_target": err_target,
+        "error_home": err_home_full, "error_target": err_target_full,
+        "error_home_subsample": err_home, "error_target_subsample": err_target,
     }
     # primary (default) cap = 20
     for cap, (w, clip_fraction) in ratio.items():
         err_cov_only = float(np.average(pred_ref != np.asarray(y_ref), weights=w))
         ess = (w.sum() ** 2) / (w ** 2).sum()
         tag = "" if cap == 20.0 else f"_c{int(cap)}"
-        out[f"covariate_share{tag}"] = err_cov_only - err_home
-        out[f"concept_share{tag}"] = err_target - err_cov_only
+        cov_share = err_cov_only - err_home
+        concept_share = err_target - err_cov_only
+        out[f"covariate_share{tag}"] = cov_share
+        out[f"concept_share{tag}"] = concept_share
         out[f"error_cov_only{tag}"] = err_cov_only
         out[f"norm_weights_max{tag}"] = float(w.max())
         out[f"norm_weights_ess_ratio{tag}"] = float(ess / len(w))
         out[f"norm_weights_clip_fraction{tag}"] = clip_fraction
+        if tag == "":  # bootstrap SE on the headline shares (cap 20)
+            se = _share_bootstrap_se(pred_ref, np.asarray(y_ref), pred_cur,
+                                     np.asarray(y_cur), w, n_boot=200, seed=0)
+            out["covariate_share_se"] = se[0]
+            out["concept_share_se"] = se[1]
     return out

@@ -12,8 +12,19 @@ ap.add_argument("--year2", default="2019", help="for --temporal: test year")
 ap.add_argument("--n-max", type=int, default=30000)
 ap.add_argument("--synthetic", action="store_true")
 ap.add_argument("--temporal", action="store_true", help="train on year, test on year2 (same states)")
-ap.add_argument("--out", default="outputs/results.csv")
+ap.add_argument("--out", default=None,
+                help="output CSV. Default is safe per run type and never overwrites "
+                     "another run's file: results.csv (HGB), results_logreg.csv "
+                     "(logreg), results_temporal.csv (temporal).")
 a = ap.parse_args()
+# Safe per-mode defaults so runs cannot silently overwrite each other.
+if a.out is None:
+    if a.temporal:
+        a.out = "outputs/results_temporal.csv"
+    elif a.model == "logreg":
+        a.out = "outputs/results_logreg.csv"
+    else:
+        a.out = "outputs/results.csv"
 if a.temporal:
     run_temporal_experiment(a.sources, a.model, a.year, a.year2, a.n_max,
                             a.synthetic, a.out)

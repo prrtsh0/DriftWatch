@@ -96,6 +96,12 @@ def shift_decomposition(df):
         {"component": "covariate_share (error_cov_only - error_home)", "value": float(df["covariate_share"].mean())},
         {"component": "concept_share (error_target - error_cov_only)", "value": float(df["concept_share"].mean())},
     ]
+    # bootstrap SE on the shares (sampling noise of the decomposition)
+    if "covariate_share_se" in df.columns:
+        rows += [
+            {"component": "covariate_share mean bootstrap SE", "value": float(df["covariate_share_se"].mean())},
+            {"component": "concept_share mean bootstrap SE", "value": float(df["concept_share_se"].mean())},
+        ]
     # reliability indicators for the reweighting (low ESS => concept_share noisy)
     if "norm_weights_ess_ratio" in df.columns:
         rows += [
