@@ -47,6 +47,13 @@ def _frame(batch: Batch) -> pd.DataFrame:
     return df[FEATURES]
 
 
+@app.get("/", include_in_schema=False)
+def root():
+    """Landing: send visitors straight to the dashboard frontend."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/dashboard")
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "model_loaded": "model" in state, "features": FEATURES}
