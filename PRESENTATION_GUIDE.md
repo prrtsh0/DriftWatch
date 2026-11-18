@@ -362,8 +362,11 @@ python check_new_data.py --state NY --synthetic
 4. **Finding 2:** label shift explains the most (LOO R² ≈ 0.36); the error
    decomposition says concept shift dominates covariate shift — but it's fragile
    for low-overlap pairs, so we report it with ESS diagnostics.
-5. **Finding 3:** the standard PSI thresholds are effectively useless — always-on
-   or always-off, 0% miss but 100% false alarm.
+ 5. **Finding 3:** on *income*, the standard PSI thresholds are effectively
+    useless — they fire on every pair or none (always-on/always-off): 0% miss
+    but 100% false alarm. On *employment* they fail too, but differently
+    (max_psi over-fires: FA 0.86; mean_psi_numeric under-fires: miss 0.89).
+    Either way, the fixed thresholds do not discriminate.
 6. **Finding 4:** it does NOT generalize to employment — nothing (not even label
    shift) tracks the small drop there. So thresholds are task-specific.
 7. **Finding 5 (temporal):** 2018→2019 shows a huge PSI but almost no input
