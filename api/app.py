@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from driftwatch.data import FEATURES
 from driftwatch.monitor import DriftMonitor
-from api.dashboard import append_history, build_dashboard, load_history
+from api.dashboard import append_history, build_dashboard, homepage, load_history
 
 import numpy as np
 
@@ -93,9 +93,9 @@ def _frame(batch: Batch) -> pd.DataFrame:
 
 @app.get("/", include_in_schema=False)
 def root():
-    """Landing: send visitors straight to the dashboard frontend."""
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/dashboard")
+    """Landing page: introduces DriftWatch and links to the dashboard + API."""
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(homepage())
 
 
 @app.get("/health")
