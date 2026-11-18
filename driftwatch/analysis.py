@@ -50,18 +50,52 @@ def correlations(df, cluster="source"):
     return pd.DataFrame(rows)
 
 
-def decomposition(df):
-    """How much of the accuracy drop does each kind of information explain? (leave-one-out R^2)"""
+def predictor_importance(df):
+    """Predictor importance for accuracy drop (leave-one-out R^2).
+
+    NOTE: This is NOT a causal decomposition of shift types. It reports how well
+    each recorded signal (input drift score, label base-rate shift, model-aware
+    score) predicts the observed accuracy drop in a simple linear cross-validation.
+    Because concept shift P(y|x) is not directly measured and the signals are
+    correlated (pairs share a source), the R^2 values are predictive-importance
+    numbers, not causal effects. For an actual covariate-vs-concept separation,
+    see `shift_decomposition` (importance reweighting).
+    """
     sets = {"input drift only (mean_psi)": ["mean_psi"],
             "input drift only (mean_psi_numeric)": ["mean_psi_numeric"],
             "input drift only (domain_auc)": ["domain_auc"],
-            "label shift only": ["label_shift"],
-            "input drift + label shift": ["mean_psi", "label_shift"]}
+            "label base-rate shift only": ["label_shift"],
+            "input drift + label base-rate shift": ["mean_psi", "label_shift"],
+            "model-aware only (pred_shift)": ["pred_shift"]}
     rows = []
     for name, cols in sets.items():
         X, y = df[cols].values, df["acc_drop"].values
         pred = cross_val_predict(LinearRegression(), X, y, cv=LeaveOneOut())
-        rows.append({"features": name, "loo_r2": r2_score(y, pred)})
+        rows.append({"predictors": name, "loo_r2": r2_score(y, pred)})
+    return pd.DataFrame(rows)
+
+
+def shift_decomposition(df):
+    """Covariate-vs-concept decomposition of the error increase using importance
+    reweighting (computed per-pair in experiment.py).
+
+    - covariate_share = mean(error_cov_only - error_home): the part of the
+      average error increase attributable to a change in P(x) alone.
+    - concept_share   = mean(error_target - error_cov_only): the residual, i.e.
+      how much of the increase is NOT explained by covariate shift (change in
+      P(y|x), plus any interaction/estimation error from the reweighting).
+    This is the honest, methodologically-grounded counterpart to the (non-causal)
+    predictor_importance table.
+    """
+    if "error_cov_only" not in df.columns:
+        return pd.DataFrame({"note": ["reweighting decomposition not present in results"]})
+    rows = [
+        {"component": "mean error at home (reference)", "value": float(df["error_home"].mean())},
+        {"component": "mean error on target", "value": float(df["error_target"].mean())},
+        {"component": "mean error under covariate shift only (reweighted ref)", "value": float(df["error_cov_only"].mean())},
+        {"component": "covariate_share (error_cov_only - error_home)", "value": float(df["covariate_share"].mean())},
+        {"component": "concept_share (error_target - error_cov_only)", "value": float(df["concept_share"].mean())},
+    ]
     return pd.DataFrame(rows)
 
 
@@ -130,7 +164,8 @@ def make_plots(df, outdir):
 def run_analysis(csv="outputs/results.csv", outdir="outputs", harmful_drop=0.03):
     os.makedirs(outdir, exist_ok=True)
     df = pd.read_csv(csv)
-    tables = {"correlations": correlations(df), "decomposition": decomposition(df),
+    tables = {"correlations": correlations(df), "predictor_importance": predictor_importance(df),
+              "shift_decomposition": shift_decomposition(df),
               "alerts": pd.DataFrame([alert_eval(df, "mean_psi", 0.1, harmful_drop),
                                       alert_eval(df, "mean_psi_numeric", 0.1, harmful_drop),
                                       alert_eval(df, "max_psi", 0.1, harmful_drop),

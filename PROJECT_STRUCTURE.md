@@ -61,7 +61,8 @@ driftwatch\driftwatch\          <- GIT ROOT
 │   ├── results.csv              # 42 rows: source/target pairs with drift scores + accuracy drop
 │   ├── results_logreg.csv       # same, for logistic regression model
 │   ├── correlations.csv         # Spearman + bootstrap CI per drift score
-│   ├── decomposition.csv        # leave-one-out R²
+│   ├── predictor_importance.csv # leave-one-out R² (non-causal; see docs)
+│   ├── shift_decomposition.csv  # covariate vs concept shift via reweighting
 │   ├── alerts.csv               # false-alarm / miss rate audit
 │   ├── harmful_auc.csv          # ROC AUC for ranking harmful pairs
 │   └── drift_vs_accuracy_drop.png
@@ -153,9 +154,15 @@ labels yet).
 
 - **`correlations.csv`** — Spearman ρ between each drift score and `acc_drop`,
   with a **2000-sample bootstrap 95% CI** (robust, handles outliers).
-- **`decomposition.csv`** — **leave-one-out R²**: how much of `acc_drop` each
-  signal explains (input-only vs label shift vs both). Negative R² = worse than
-  predicting the mean.
+- **`predictor_importance.csv`** — **leave-one-out R²**: how well each recorded
+  signal predicts `acc_drop` (input-only vs label base-rate vs model-aware).
+  Negative R² = worse than predicting the mean. **Non-causal**: it measures
+  predictive importance, not a causal separation of shift types.
+- **`shift_decomposition.csv`** — the **causal, methodologically-grounded**
+  counterpart: importance-reweighting decomposition of the error increase into
+  **covariate_share** (the part explained by a change in P(x) alone) and
+  **concept_share** (the residual = change in P(y|x) + interaction). This is what
+  directly addresses "concept shift is never measured".
 - **`alerts.csv`** — treats "alert when score ≥ threshold" as a classifier vs
   "harmful = acc_drop ≥ 0.03". Reports `tp/fp/fn/tn`, **false_alarm_rate**, **miss_rate**.
 - **`harmful_auc.csv`** — ROC AUC for ranking harmful vs harmless pairs by each score.

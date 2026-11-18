@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 from .data import load_state
 from .drift import drift_summary
 from .model import build_model
-from .baselines import compute_baselines
+from .baselines import compute_baselines, decompose_error_shifts
 
 
 def run_temporal_experiment(states, model_kind="hgb", year="2018", year2="2019",
@@ -40,6 +40,7 @@ def run_temporal_experiment(states, model_kind="hgb", year="2018", year2="2019",
             "label_shift": abs(yt.mean() - y_tr.mean()),
             "pred_shift": abs(prob.mean() - ref_prob.mean()),
             **compute_baselines(model, X_val, Xt),
+            **decompose_error_shifts(model, X_val, y_val, Xt, yt),
             **drift_summary(X_val, Xt),
         })
     df = pd.DataFrame(rows)
@@ -79,6 +80,7 @@ def run_experiment(sources, targets, model_kind="hgb", year="2018", n_max=30000,
                 "label_shift": abs(yt.mean() - y_tr.mean()),      # uses labels: explains, not a drift score
                 "pred_shift": abs(prob.mean() - ref_prob.mean()), # label-free, model-aware
                 **compute_baselines(model, X_ref, Xt),            # ATC, DoC, MMD, pred_shift
+                **decompose_error_shifts(model, X_ref, y_ref, Xt, yt),  # covariate vs concept share
                 **drift_summary(X_ref, Xt),                       # label-free drift scores
             })
     df = pd.DataFrame(rows)

@@ -92,3 +92,55 @@ def compute_baselines(model, ref: pd.DataFrame, cur: pd.DataFrame) -> dict:
         "doc": doc(model, ref, cur),
         "mmd": mmd(ref, cur),
     }
+
+
+def _density_ratio(ref, cur, n=2000, seed=0):
+    """Estimate w(x) = P_cur(x) / P_ref(x) with a domain classifier (logistic on
+    primary features). w = p(origin=cur) / p(origin=ref). Used for reweighting.
+    """
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.preprocessing import StandardScaler
+
+    rng = np.random.default_rng(seed)
+    r = ref.sample(min(n, len(ref)), random_state=seed).copy()
+    c = cur.sample(min(n, len(cur)), random_state=seed).copy()
+    X = pd.concat([r[FEATURES], c[FEATURES]])
+    y = np.r_[np.zeros(len(r)), np.ones(len(c))]
+    sc = StandardScaler().fit(X[FEATURES])
+    Xs = sc.transform(X[FEATURES])
+    clf = LogisticRegression(max_iter=1000).fit(Xs, y)
+    p = clf.predict_proba(sc.transform(ref[FEATURES]))[:, 1]
+    w = p / np.clip(1 - p, 1e-6, None)   # odds ratio ≈ P_cur/P_ref
+    return np.clip(w / w.mean(), 1e-3, 1e3)
+
+
+def decompose_error_shifts(model, ref, y_ref, cur, y_cur):
+    """Decompose the accuracy/error *increase* into a covariate-shift part and a
+    concept-shift part using importance reweighting (a standard technique for
+    separating these under covariate shift).
+
+    - error_home      = error of the model on the reference (holdout) sample.
+    - error_target     = error on the new (target) data.
+    - error_cov_only   = error on the reference, reweighted so the covariate
+                         distribution matches the target. This is the error we
+                         *would* expect if only P(x) changed and P(y|x) were fixed.
+    - covariate_share  = error_cov_only - error_home   (part explained by P(x) change)
+    - concept_share    = error_target - error_cov_only (residual = P(y|x) change
+                         + interaction/approximation error)
+    NOTE: concept_share is an upper-bound-ish estimate; it also captures any
+    departure from the importance-weighting assumptions (non-overlap, estimation
+    error), so it should be read as 'the part of the drop not explained by
+    covariate shift alone', not a clean causal estimate.
+    """
+    pred_ref = model.predict(ref[FEATURES]) >= 0.5
+    pred_cur = model.predict(cur[FEATURES]) >= 0.5
+    err_home = float((pred_ref != np.asarray(y_ref)).mean())
+    err_target = float((pred_cur != np.asarray(y_cur)).mean())
+    w = _density_ratio(ref, cur)
+    err_cov_only = float(np.average(pred_ref != np.asarray(y_ref), weights=w))
+    return {
+        "error_home": err_home, "error_target": err_target,
+        "error_cov_only": err_cov_only,
+        "covariate_share": err_cov_only - err_home,
+        "concept_share": err_target - err_cov_only,
+    }
