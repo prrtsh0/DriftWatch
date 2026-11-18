@@ -47,6 +47,12 @@ def load_state(state: str, year: str = "2018", n_max: int = 30000, seed: int = 0
     from folktables import ACSDataSource, ACSIncome       # imported here so tests need no download
     source = ACSDataSource(survey_year=year, horizon="1-Year", survey="person", root_dir=root_dir)
     acs = source.get_data(states=[state], download=True)  # first call downloads from census.gov
+    # The ACS person-level schema changed: RELP (relationship) was renamed to
+    # RELSHIPP in 2019+. Folktables' ACSIncome hardcodes "RELP" as a feature, so
+    # rename the column back before it filters, so the same FEATURES work for
+    # both frontiers.
+    if "RELP" not in acs.columns and "RELSHIPP" in acs.columns:
+        acs = acs.rename(columns={"RELSHIPP": "RELP"})
     X, y, _ = ACSIncome.df_to_pandas(acs)
     y = y["PINCP"].astype(int)
     X = X[FEATURES].astype(float)
