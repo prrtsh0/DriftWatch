@@ -1,6 +1,11 @@
 """Run the benchmark. Real data: python run_experiment.py   Test without internet: add --synthetic"""
 import argparse
+import numpy as np
 from driftwatch.experiment import run_experiment, run_temporal_experiment
+
+# Reproducibility: pin the global RNG. The stochastic internals also use fixed
+# local seeds (random_state=seed / default_rng(seed)), so this is defensive.
+np.random.seed(0)
 
 ap = argparse.ArgumentParser()
 ALL_STATES = ["CA", "TX", "NY", "FL", "WA", "IL", "OH", "MI", "MN", "MS", "AL", "WV", "ME", "UT", "MA"]
