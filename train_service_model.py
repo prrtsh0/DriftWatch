@@ -21,7 +21,10 @@ tn, fp, fn, tp = confusion_matrix(y_ref, y_pred).ravel()
 os.makedirs("artifacts", exist_ok=True)
 joblib.dump(model, "artifacts/model.joblib")
 X_ref.sample(min(5000, len(X_ref)), random_state=0).to_csv("artifacts/reference.csv", index=False)
+ref_prob = model.predict_proba(X_ref)[:, 1]
+ref_prob_mean = float(ref_prob.mean())
 metrics = {"state": a.state, "model": a.model, "home_accuracy": acc,
+           "ref_prob_mean": ref_prob_mean,
            "confusion_matrix": {"TN": int(tn), "FP": int(fp), "FN": int(fn), "TP": int(tp)}}
 json.dump(metrics, open("artifacts/metrics.json", "w"))
 print(f"saved model trained on {a.state}; home accuracy {acc:.3f}")

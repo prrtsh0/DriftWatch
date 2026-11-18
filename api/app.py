@@ -12,6 +12,8 @@ from driftwatch.data import FEATURES
 from driftwatch.monitor import DriftMonitor
 from api.dashboard import append_history, build_dashboard, load_history
 
+import numpy as np
+
 ART = Path(os.getenv("DRIFTWATCH_ARTIFACTS", "artifacts"))
 state = {}
 
@@ -21,6 +23,10 @@ async def lifespan(app):
     if (ART / "model.joblib").exists():
         state["model"] = joblib.load(ART / "model.joblib")
         state["monitor"] = DriftMonitor(pd.read_csv(ART / "reference.csv"))
+        if (ART / "metrics.json").exists():
+            import json
+            with open(ART / "metrics.json") as fh:
+                state["ref_prob_mean"] = json.load(fh).get("ref_prob_mean")
     yield
 
 
@@ -54,7 +60,15 @@ def predict(batch: Batch):
 
 @app.post("/drift")
 def drift(batch: Batch):
-    result = state["monitor"].check(_frame(batch))
+    df = _frame(batch)
+    result = state["monitor"].check(df)
+    # pred_shift: the model-aware signal (the study's best predictor). Requires
+    # the reference probability mean saved by train_service_model.py.
+    if "model" in state and state.get("ref_prob_mean") is not None:
+        batch_prob_mean = float(state["model"].predict_proba(df)[:, 1].mean())
+        result["pred_shift"] = abs(batch_prob_mean - state["ref_prob_mean"])
+    else:
+        result["pred_shift"] = None
     append_history(result)          # persist so the dashboard can show history
     state["latest"] = result
     return result

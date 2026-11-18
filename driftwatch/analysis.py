@@ -11,15 +11,30 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score, roc_auc_score
 from sklearn.model_selection import LeaveOneOut, cross_val_predict
 
-DRIFT_COLS = ["mean_psi", "mean_psi_numeric", "max_psi", "mean_ks", "domain_auc", "pred_shift"]
+DRIFT_COLS = ["mean_psi", "mean_psi_numeric", "max_psi", "mean_ks", "domain_auc",
+              "pred_shift", "atc", "doc", "mmd"]
 
 
-def spearman_ci(df, col, target="acc_drop", n_boot=2000, seed=0):
-    """Rank correlation between a drift score and accuracy drop, with a bootstrap 95% interval."""
+def spearman_ci(df, col, target="acc_drop", n_boot=2000, seed=0, cluster=None):
+    """Rank correlation between a drift score and accuracy drop, with a bootstrap 95% interval.
+
+    If `cluster` is a column name (e.g. "source"), the bootstrap resamples at the
+    cluster level (a cluster bootstrap) instead of individual rows. This gives
+    honest intervals when rows are not independent (pairs share a source model).
+    """
     rho = spearmanr(df[col], df[target])[0]
-    rng, vals = np.random.default_rng(seed), []
+    rng = np.random.default_rng(seed)
+    if cluster is None:
+        def resample():
+            return df.iloc[rng.integers(0, len(df), len(df))]
+    else:
+        clusters = df[cluster].unique()
+        def resample():
+            chosen = rng.choice(clusters, size=len(clusters), replace=True)
+            return pd.concat([df[df[cluster] == c] for c in chosen])
+    vals = []
     for _ in range(n_boot):
-        s = df.iloc[rng.integers(0, len(df), len(df))]
+        s = resample()
         r = spearmanr(s[col], s[target])[0]
         if not np.isnan(r):
             vals.append(r)
@@ -27,8 +42,12 @@ def spearman_ci(df, col, target="acc_drop", n_boot=2000, seed=0):
     return {"score": col, "spearman": rho, "ci_low": lo, "ci_high": hi}
 
 
-def correlations(df):
-    return pd.DataFrame([spearman_ci(df, c) for c in DRIFT_COLS])
+def correlations(df, cluster="source"):
+    """Column-wise Spearman + bootstrap CI. Uses a cluster bootstrap on `cluster`
+    (the source state) so the intervals account for rows sharing a source model.
+    """
+    rows = [spearman_ci(df, c, cluster=cluster) for c in DRIFT_COLS]
+    return pd.DataFrame(rows)
 
 
 def decomposition(df):
@@ -56,6 +75,37 @@ def alert_eval(df, col, threshold, harmful_drop=0.03):
             "false_alarm_rate": fp / max(fp + tn, 1), "miss_rate": fn / max(fn + tp, 1)}
 
 
+def threshold_sweep(df, col, harmful_drop=0.03, thresholds=None):
+    """Audit a drift score across many alert thresholds. For each threshold, treat
+    `score >= threshold` as an alert and evaluate it against harmful pairs
+    (acc_drop >= harmful_drop). Returns a table with tp/fp/fn/tn, precision,
+    recall, miss rate, and false-alarm rate. This replaces the 2-threshold check
+    with a full curve, so we can see whether ANY threshold discriminates.
+    """
+    if thresholds is None:
+        thresholds = np.linspace(df[col].min(), df[col].max(), 40)
+    harmful = (df["acc_drop"] >= harmful_drop).astype(bool)
+    rows = []
+    for t in thresholds:
+        alert = df[col].astype(float) >= t
+        tp = int((alert & harmful).sum()); fp = int((alert & ~harmful).sum())
+        fn = int((~alert & harmful).sum()); tn = int((~alert & ~harmful).sum())
+        rows.append({
+            "score": col, "threshold": round(float(t), 4), "harmful_if_drop>=": harmful_drop,
+            "tp": tp, "fp": fp, "fn": fn, "tn": tn,
+            "precision": tp / max(tp + fp, 1), "recall": tp / max(tp + fn, 1),
+            "false_alarm_rate": fp / max(fp + tn, 1), "miss_rate": fn / max(fn + tp, 1),
+            "n_alerts": tp + fp, "n_harmful": int(harmful.sum()),
+        })
+    return pd.DataFrame(rows)
+
+
+def alert_sweep_all(df, harmful_drop=0.03):
+    """Full threshold sweep for the label-free scores + the model-aware signal."""
+    cols = [c for c in DRIFT_COLS if c in df.columns]
+    return pd.concat([threshold_sweep(df, c, harmful_drop) for c in cols], ignore_index=True)
+
+
 def harmful_auc(df, harmful_drop=0.03):
     harmful = (df["acc_drop"] >= harmful_drop).astype(int)
     if harmful.nunique() < 2:
@@ -78,12 +128,14 @@ def make_plots(df, outdir):
 
 
 def run_analysis(csv="outputs/results.csv", outdir="outputs", harmful_drop=0.03):
+    os.makedirs(outdir, exist_ok=True)
     df = pd.read_csv(csv)
     tables = {"correlations": correlations(df), "decomposition": decomposition(df),
               "alerts": pd.DataFrame([alert_eval(df, "mean_psi", 0.1, harmful_drop),
                                       alert_eval(df, "mean_psi_numeric", 0.1, harmful_drop),
                                       alert_eval(df, "max_psi", 0.1, harmful_drop),
                                       alert_eval(df, "max_psi", 0.25, harmful_drop)]),
+              "threshold_sweep": alert_sweep_all(df, harmful_drop),
               "harmful_auc": harmful_auc(df, harmful_drop)}
     for name, t in tables.items():
         t.to_csv(os.path.join(outdir, f"{name}.csv"), index=False)

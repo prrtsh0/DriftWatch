@@ -71,8 +71,11 @@ threshold audit**, not a claim to have built a better detector.
   - PSI per feature (numeric quantile buckets; categorical top-20 frequency);
   - KS on the three numeric features; and
   - domain-classifier AUC (can a model tell old vs new rows?).
-- **Model-aware signal:** `pred_shift` = |mean predicted probability on target −
-  on reference| — label-free, uses the model's own scores.
+- **Model-aware signals:**
+  - `pred_shift` = |mean predicted probability on target − on reference| — label-free, uses the model's own scores;
+  - `atc` (Average Threshold Confidence) and `doc` (Difference of Confidences) — confidence-based accuracy estimators (Garg et al. 2022; Guillory et al. 2021);
+  - `mmd` (Maximum Mean Discrepancy) — a classical label-free two-sample test.
+- **Benchmark design:** cross-state pairs (train on one state, test on others) **and** temporal pairs (train on 2018, test on 2019 within the same state). All 15 states run as sources (210 cross-state rows), not just 3.
 - **Ground-truth outcome:** `acc_drop` = home accuracy − target accuracy.
 - **Statistics:** Spearman correlations with 2,000-sample bootstrap 95% CIs;
   leave-one-out R² to decompose which signal explains accuracy drop; false-alarm

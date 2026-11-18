@@ -44,5 +44,13 @@ new = new[FEATURES]
 
 report = DriftMonitor(reference).check(new)
 report["share_predicted_over_50k"] = float((model.predict_proba(new)[:, 1] >= 0.5).mean())
+try:
+    import json as _json
+    with open("artifacts/metrics.json") as _fh:
+        _ref_prob_mean = _json.load(_fh).get("ref_prob_mean")
+    if _ref_prob_mean is not None:
+        report["pred_shift"] = abs(float((model.predict_proba(new)[:, 1].mean()) - _ref_prob_mean))
+except Exception:
+    report["pred_shift"] = None
 print(json.dumps(report, indent=2))
 print("\nNote: this shows how much the inputs CHANGED. It cannot show accuracy, because new data has no true answers yet.")

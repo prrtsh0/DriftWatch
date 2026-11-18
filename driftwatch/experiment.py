@@ -8,6 +8,45 @@ from sklearn.model_selection import train_test_split
 from .data import load_state
 from .drift import drift_summary
 from .model import build_model
+from .baselines import compute_baselines
+
+
+def run_temporal_experiment(states, model_kind="hgb", year="2018", year2="2019",
+                            n_max=30000, synthetic=False, out_csv="outputs/results_temporal.csv"):
+    """Train on a state in {year}, test on the SAME state in {year2} (temporal
+    shift — the most common real-world deployment case). No label leakage: the
+    reference is the year-year holdout; the target is next year's rows.
+    """
+    rows = []
+    for state in states:
+        if synthetic:
+            # synthetic year doesn't exist; reuse but note it's not a true temporal test
+            X_ref, y_ref = load_state(state, year="2018", n_max=n_max, synthetic=True)
+            Xt, yt = load_state(state, year="2018", n_max=n_max, synthetic=True,
+                                 seed=1)   # different seed => different draw
+        else:
+            X_ref, y_ref = load_state(state, year=year, n_max=n_max)
+            Xt, yt = load_state(state, year=year2, n_max=n_max)
+        X_tr, X_val, y_tr, y_val = train_test_split(X_ref, y_ref, test_size=0.3,
+                                                    random_state=0, stratify=y_ref)
+        model = build_model(model_kind).fit(X_tr, y_tr)
+        ref_prob = model.predict_proba(X_val)[:, 1]
+        ref_acc = accuracy_score(y_val, ref_prob >= 0.5)
+        prob = model.predict_proba(Xt)[:, 1]
+        acc = accuracy_score(yt, prob >= 0.5)
+        rows.append({
+            "source": state, "target": f"{state}_{year2}", "model": model_kind,
+            "ref_acc": ref_acc, "target_acc": acc, "acc_drop": ref_acc - acc,
+            "label_shift": abs(yt.mean() - y_tr.mean()),
+            "pred_shift": abs(prob.mean() - ref_prob.mean()),
+            **compute_baselines(model, X_val, Xt),
+            **drift_summary(X_val, Xt),
+        })
+    df = pd.DataFrame(rows)
+    os.makedirs(os.path.dirname(out_csv) or ".", exist_ok=True)
+    df.to_csv(out_csv, index=False)
+    print(f"saved {len(df)} temporal rows to {out_csv}")
+    return df
 
 
 def run_experiment(sources, targets, model_kind="hgb", year="2018", n_max=30000,
@@ -39,6 +78,7 @@ def run_experiment(sources, targets, model_kind="hgb", year="2018", n_max=30000,
                 "ref_acc": ref_acc, "target_acc": acc, "acc_drop": ref_acc - acc,
                 "label_shift": abs(yt.mean() - y_tr.mean()),      # uses labels: explains, not a drift score
                 "pred_shift": abs(prob.mean() - ref_prob.mean()), # label-free, model-aware
+                **compute_baselines(model, X_ref, Xt),            # ATC, DoC, MMD, pred_shift
                 **drift_summary(X_ref, Xt),                       # label-free drift scores
             })
     df = pd.DataFrame(rows)
