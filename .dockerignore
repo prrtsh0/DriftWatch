@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+.pytest_cache/
+data/
+outputs*/
+*.pyc
+*.log
+.git/
+.gitignore
+*.joblib

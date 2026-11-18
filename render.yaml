@@ -1,0 +1,13 @@
+# Render Blueprint — DriftWatch demo API + dashboard.
+# The research/experiment pipeline stays local; only the FastAPI service deploys.
+services:
+  - type: web
+    name: driftwatch
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DRIFTWATCH_ARTIFACTS
+        value: artifacts
