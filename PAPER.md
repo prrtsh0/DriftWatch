@@ -3,9 +3,9 @@
 > Working title: **"When Drift Alerts Lie: Decomposing What Label-Free Drift
 > Scores Capture in Real Model Shifts"**
 >
-> Status: DRAFT. Numbers marked **[EMP]** come from the employment-task run and
-> are filled in when that run finishes. Income numbers are the verified 210-row
-> HGB run (commit `1d07460`).
+> Status: DRAFT. Income numbers are the verified 210-row HGB run (commit
+> `1d07460`); employment numbers are the verified 210-row run (commit
+> `a65159b`). Temporal numbers pending.
 
 ---
 
@@ -18,17 +18,18 @@ actually track accuracy loss, and do the standard alert thresholds work?
 
 Using **natural** shifts from US Census data — across 15 states (cross-state)
 and across years 2018→2019 (temporal), on two independent tasks (income,
-employment) and two model families — we find: (1) numeric input scores track
-accuracy loss **moderately** (Spearman ≈ 0.3–0.44; leave-one-source-out R² up
-to ~0.24); (2) the model-aware, label-free `pred_shift` does **not** track
-accuracy in this setup (ρ ≈ 0.09, CI includes 0); (3) the standard fixed PSI
-thresholds are **uninformative as stated** — always-on or always-off, 0% miss
-but 100% false alarm; and (4) an importance-reweighting decomposition, reported
-with cross-fitting, truncation sensitivity, and effective-sample-size
-diagnostics, attributes most of the accuracy drop to **label/concept shift** —
-but the split is fragile for low-overlap pairs and is confounded by a
-non-state-adjusted $50k threshold. We release code, data-loading, and full
-results.
+employment) and two model families — we find: **(1) the scores do not
+generalize across tasks.** On income, numeric input scores track accuracy loss
+moderately (Spearman ≈ 0.3–0.44; MMD R² ≈ 0.24); on employment, where drift is
+smaller, **no score — not even the label base-rate — reliably tracks the loss**
+(LOO R² ≤ 0.02 for all). (2) the model-aware, label-free `pred_shift` never
+tracks accuracy (ρ ≈ 0.07–0.09). (3) the standard fixed PSI thresholds are
+**uninformative as stated** on both tasks — always-on/always-off or grossly
+over-/under-firing. (4) an importance-reweighting decomposition attributes most
+of the *income* accuracy drop to **label/concept shift** (concept_share +0.027
+vs covariate_share −0.005), but the split is fragile for low-overlap pairs and
+confounded by a non-state-adjusted $50k threshold; on employment the (smaller)
+drop splits more evenly. We release code, data-loading, and full results.
 
 ---
 
@@ -117,23 +118,103 @@ here.
 Per-source table shows AL/WV/ME (low ESS) drive the split. Interpret with the
 $50k-cutoff caveat.
 
-## 5. Results (employment — [EMP] pending)
+## 5. Results (employment — full 210-row HGB run, commit `a65159b`)
 
-- [EMP] Spearman table for employment.
-- [EMP] threshold audit.
-- [EMP] decomposition.
+> The employment task has **much weaker drift**: mean `acc_drop` = 0.007
+> (income: 0.022), and only 9 of 210 pairs are "harmful" (drop ≥ 0.03).
+> The headline is that **the scores that worked moderately on income do NOT
+> generalize** — this is a key cross-task finding, not a null.
+
+### 5.1 Correlations (all weak; several near zero)
+
+| Signal | Spearman ρ (95% CI) |
+|---|---|
+| mean PSI | 0.20 (0.02, 0.43) |
+| mean PSI numeric | 0.19 (0.05, 0.37) |
+| mean KS | 0.19 (−0.00, 0.40) |
+| domain AUC | 0.17 (−0.01, 0.39) |
+| MMD | 0.14 (−0.02, 0.31) |
+| pred_shift | 0.07 (−0.13, 0.30) |
+| ATC / DoC | −0.24 (−0.49, 0.10) |
+
+No input score has a dependable positive correlation; ATC/DoC are *negative*
+(opposite of income).
+
+### 5.2 Predictor importance (nothing explains loss here)
+
+| Predictors | LOO R² |
+|---|---|
+| mean_psi_numeric | 0.02 |
+| mean_ks | 0.02 |
+| mean_psi | 0.01 |
+| mmd | 0.004 |
+| label base-rate shift only | −0.003 |
+| pred_shift | −0.01 |
+
+Unlike income (label-shift LOO R² ≈ +0.31), on employment **no signal — not even
+label shift — tracks the (small) accuracy drop.** The drop is small and close to
+noise; ~4% of pairs are harmful.
+
+### 5.3 Threshold audit (fails differently)
+
+| Rule | TP | FP | FN | TN | False-alarm | Miss |
+|---|---|---|---|---|---|---|
+| mean_psi ≥ 0.10 | 2 | 36 | 7 | 165 | 0.18 | 0.78 |
+| mean_psi_numeric ≥ 0.10 | 1 | 11 | 8 | 190 | 0.05 | 0.89 |
+| max_psi ≥ 0.10 | 8 | 172 | 1 | 29 | 0.86 | 0.11 |
+| max_psi ≥ 0.25 | 5 | 110 | 4 | 91 | 0.55 | 0.44 |
+
+`max_psi` over-fires (FA 0.86); `mean_psi_numeric` under-fires (miss 0.89).
+No standard threshold achieves both low miss and low false-alarm.
+
+### 5.4 Harmful-ranking AUC (wide CIs — only 9 harmful pairs)
+
+| Score | AUC for harmful |
+|---|---|
+| domain AUC | 0.73 |
+| MMD | 0.66 |
+| mean PSI | 0.66 |
+| pred_shift | 0.40 |
+| ATC / DoC | 0.24 |
+
+CIs are wide because there are only 9 positives; interpret cautiously.
+
+### 5.5 Decomposition (small and balanced)
+
+| Quantity | Value |
+|---|---|
+| error_home | 0.171 |
+| error_target | 0.178 |
+| covariate_share | +0.001 (SE 0.003) |
+| concept_share | +0.006 (SE 0.006) |
+| median ESS ratio | 0.80 |
+| share of pairs with ESS < 0.2 | 0.043 |
+
+The split is far more balanced than income (concept ≈ 85% of a much smaller
+drop) and far more stable (few low-ESS pairs).
 
 ## 6. Discussion
 
-- Why input scores partly work and pred_shift fails: numeric distribution
-  distance tracks covariate shift which correlates with loss; pred_shift is a
-  *model-output* shift that can be large with no accuracy effect (e.g. the model
-  recalibrating without losing discriminative power).
-- Thresholds: fixed thresholds fail because the right cutoff depends on the task,
-  the model, and the feature cardinality. Practitioners need task-specific,
-  calibrated thresholds or a different monitoring statistic.
-- Decomposition: label/concept shift is the dominant driver, but the split is
-  not stable for low-overlap pairs — report diagnostics.
+- **Cross-task non-generalization is the main finding.** On income (larger
+  drift), MMD/numeric-PSI/KS track loss moderately and label shift explains most
+  of it. On employment (smaller drift), nothing — not even label shift — tracks
+  the (mostly benign) drop. Two implications: (a) a "which score works" answer
+  is task- and drift-magnitude-dependent; (b) monitoring thresholds calibrated on
+  one task cannot be assumed to transfer. This is exactly the "single
+  case-study" → "general finding" leap the earlier version lacked.
+- Why input scores partly work on income and pred_shift fails: numeric
+  distribution distance tracks covariate shift which correlates with loss;
+  pred_shift is a *model-output* shift that can be large with no accuracy effect
+  (e.g. the model recalibrating without losing discriminative power). On
+  employment even the numeric scores fail because the drift is too small to be
+  distinguishable from noise.
+- Thresholds: fixed thresholds fail on both tasks, but *differently* (income:
+  constant classifiers; employment: over-fire or under-fire). The right cutoff
+  depends on task, model, and feature cardinality — practitioners need
+  task-specific calibrated thresholds or a different monitoring statistic.
+- Decomposition: on income, label/concept shift dominates but the split is
+  fragile for low-overlap pairs; on employment the smaller drop splits more
+  evenly and stably. Always report diagnostics (ESS, truncation caps, per-source).
 
 ## 7. Limitations (argued)
 
@@ -147,7 +228,9 @@ $50k-cutoff caveat.
 - One modality (tabular census), two tasks, two frontiers. Generalization to
   image/text is future work.
 - Pairs share source model → group LOO reported.
-- Categorical PSI inflation (POBP/OCCP) → `mean_psi` < `mean_psi_numeric`.
+- Categorical PSI inflation (POBP/OCCP) made `mean_psi` < `mean_psi_numeric` on
+  income; this did not hold on employment (the two were nearly equal), so the
+  inflation story is task-specific.
 
 ## 8. Reproducibility
 

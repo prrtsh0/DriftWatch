@@ -24,20 +24,29 @@ def spearman_ci(df, col, target="acc_drop", n_boot=2000, seed=0, cluster=None):
     """
     rho = spearmanr(df[col], df[target])[0]
     rng = np.random.default_rng(seed)
-    if cluster is None:
-        def resample():
-            return df.iloc[rng.integers(0, len(df), len(df))]
-    else:
-        clusters = df[cluster].unique()
-        def resample():
-            chosen = rng.choice(clusters, size=len(clusters), replace=True)
-            return pd.concat([df[df[cluster] == c] for c in chosen])
     vals = []
-    for _ in range(n_boot):
-        s = resample()
-        r = spearmanr(s[col], s[target])[0]
-        if not np.isnan(r):
-            vals.append(r)
+    if cluster is None:
+        n = len(df)
+        for _ in range(n_boot):
+            s = df.iloc[rng.integers(0, n, n)]
+            r = spearmanr(s[col], s[target])[0]
+            if not np.isnan(r):
+                vals.append(r)
+    else:
+        # Precompute integer row positions per cluster once, then resample by
+        # concatenating positions. This avoids re-masking + re-concat'ing
+        # dataframes on every bootstrap iteration (which was the bottleneck).
+        groups = df[cluster].to_numpy()
+        clusters = np.unique(groups)
+        pos_by_cluster = [np.flatnonzero(groups == c) for c in clusters]
+        k = len(clusters)
+        for _ in range(n_boot):
+            chosen = rng.integers(0, k, size=k)
+            sel = np.concatenate([pos_by_cluster[c] for c in chosen])
+            s = df.iloc[sel]
+            r = spearmanr(s[col], s[target])[0]
+            if not np.isnan(r):
+                vals.append(r)
     lo, hi = np.percentile(vals, [2.5, 97.5])
     return {"score": col, "spearman": rho, "ci_low": lo, "ci_high": hi}
 
@@ -281,18 +290,24 @@ def make_plots(df, outdir):
 def run_analysis(csv="outputs/results.csv", outdir="outputs", harmful_drop=0.03):
     os.makedirs(outdir, exist_ok=True)
     df = pd.read_csv(csv)
-    tables = {"correlations": correlations(df), "predictor_importance": predictor_importance(df),
-              "shift_decomposition": shift_decomposition(df),
-              "shift_decomposition_by_source": shift_decomposition_by_source(df),
-              "per_pair_cap_drift": per_pair_cap_drift(df),
-              "alerts": pd.DataFrame([alert_eval(df, "mean_psi", 0.1, harmful_drop),
-                                      alert_eval(df, "mean_psi_numeric", 0.1, harmful_drop),
-                                      alert_eval(df, "max_psi", 0.1, harmful_drop),
-                                      alert_eval(df, "max_psi", 0.25, harmful_drop)]),
-              "threshold_sweep": alert_sweep_all(df, harmful_drop),
-              "harmful_auc": harmful_auc(df, harmful_drop)}
-    for name, t in tables.items():
+    tables = {}
+    # Compute and persist each table independently so a slow component never
+    # blocks the others (and partial results survive an interruption).
+    def _store(name, t):
+        tables[name] = t
         t.to_csv(os.path.join(outdir, f"{name}.csv"), index=False)
-        print(f"\n== {name} ==\n{t.round(3).to_string(index=False)}")
+        print(f"\n== {name} ==\n{t.round(3).to_string(index=False)}", flush=True)
+
+    _store("correlations", correlations(df))
+    _store("predictor_importance", predictor_importance(df))
+    _store("shift_decomposition", shift_decomposition(df))
+    _store("shift_decomposition_by_source", shift_decomposition_by_source(df))
+    _store("per_pair_cap_drift", per_pair_cap_drift(df))
+    _store("alerts", pd.DataFrame([alert_eval(df, "mean_psi", 0.1, harmful_drop),
+                                    alert_eval(df, "mean_psi_numeric", 0.1, harmful_drop),
+                                    alert_eval(df, "max_psi", 0.1, harmful_drop),
+                                    alert_eval(df, "max_psi", 0.25, harmful_drop)]))
+    _store("threshold_sweep", alert_sweep_all(df, harmful_drop))
+    _store("harmful_auc", harmful_auc(df, harmful_drop))
     make_plots(df, outdir)
     return tables
