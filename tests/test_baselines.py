@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 
-from driftwatch.baselines import (atc, compute_baselines, decompose_error_shifts,
-                                  doc, mmd, pred_shift)
+from driftwatch.baselines import (_density_ratio, atc, compute_baselines,
+                                  decompose_error_shifts, doc, mmd, pred_shift)
 from driftwatch.data import FEATURES, load_state, make_synthetic_state
 from driftwatch.model import build_model
 
@@ -71,6 +71,19 @@ def test_decompose_no_change_zero_shares():
     assert abs(res["error_home"] - res["error_target"]) < 1e-6
     assert abs(res["covariate_share"]) < 1e-3
     assert abs(res["concept_share"]) < 1e-3
+
+
+def test_density_ratio_weights_clipped_and_reported():
+    X, _ = load_state("CA", n_max=3000, synthetic=True)
+    X2, _ = load_state("TX", n_max=3000, synthetic=True)
+    w, frac = _density_ratio(X, X2, max_mult=20.0)
+    assert len(w) == len(X)
+    assert np.isfinite(w).all()
+    assert w.min() >= 1.0 / 20.0 - 1e-9    # lower bound respected
+    assert w.max() <= 20.0 + 1e-9           # upper bound respected
+    assert 0.0 <= frac <= 1.0
+    # mean is ~1 before any clipping; confirm it's still sane
+    assert abs(w.mean() - 1.0) < 0.1
 
 
 def test_decompose_covariate_only_gives_zero_concept_share():

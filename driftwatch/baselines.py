@@ -94,14 +94,19 @@ def compute_baselines(model, ref: pd.DataFrame, cur: pd.DataFrame) -> dict:
     }
 
 
-def _density_ratio(ref, cur, n=2000, seed=0):
+def _density_ratio(ref, cur, n=2000, seed=0, max_mult=20.0):
     """Estimate w(x) = P_cur(x) / P_ref(x) with a domain classifier (logistic on
     primary features). w = p(origin=cur) / p(origin=ref). Used for reweighting.
+
+    Weights are normalized to mean 1 and truncated to [1/max_mult, max_mult]
+    times the mean. Truncation is essential: high-cardinality features
+    (POBP, OCCP) can otherwise produce extreme weights that dominate the
+    reweighted error. Returns (w, clip_fraction) where clip_fraction is the
+    share of weights that hit the upper or lower bound.
     """
     from sklearn.linear_model import LogisticRegression
     from sklearn.preprocessing import StandardScaler
 
-    rng = np.random.default_rng(seed)
     r = ref.sample(min(n, len(ref)), random_state=seed).copy()
     c = cur.sample(min(n, len(cur)), random_state=seed).copy()
     X = pd.concat([r[FEATURES], c[FEATURES]])
@@ -111,7 +116,11 @@ def _density_ratio(ref, cur, n=2000, seed=0):
     clf = LogisticRegression(max_iter=1000).fit(Xs, y)
     p = clf.predict_proba(sc.transform(ref[FEATURES]))[:, 1]
     w = p / np.clip(1 - p, 1e-6, None)   # odds ratio ≈ P_cur/P_ref
-    return np.clip(w / w.mean(), 1e-3, 1e3)
+    w = w / w.mean()                      # normalize so mean = 1
+    lo, hi = 1.0 / max_mult, max_mult
+    clipped = np.clip(w, lo, hi)
+    clip_fraction = float((clipped != w).mean())
+    return clipped, clip_fraction
 
 
 def decompose_error_shifts(model, ref, y_ref, cur, y_cur):
@@ -140,7 +149,7 @@ def decompose_error_shifts(model, ref, y_ref, cur, y_cur):
     pred_cur = model.predict(cur[FEATURES]) >= 0.5
     err_home = float((pred_ref != np.asarray(y_ref)).mean())
     err_target = float((pred_cur != np.asarray(y_cur)).mean())
-    w = _density_ratio(ref, cur)
+    w, clip_fraction = _density_ratio(ref, cur)
     err_cov_only = float(np.average(pred_ref != np.asarray(y_ref), weights=w))
     ess = (w.sum() ** 2) / (w ** 2).sum()
     return {
@@ -150,4 +159,5 @@ def decompose_error_shifts(model, ref, y_ref, cur, y_cur):
         "concept_share": err_target - err_cov_only,
         "norm_weights_max": float(w.max()),
         "norm_weights_ess_ratio": float(ess / len(w)),
+        "norm_weights_clip_fraction": clip_fraction,
     }

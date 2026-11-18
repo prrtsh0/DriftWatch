@@ -101,6 +101,7 @@ def shift_decomposition(df):
         rows += [
             {"component": "norm_weights_ess_ratio (median across pairs)", "value": float(df["norm_weights_ess_ratio"].median())},
             {"component": "norm_weights_max (median across pairs)", "value": float(df["norm_weights_max"].median())},
+            {"component": "norm_weights_clip_fraction (median across pairs)", "value": float(df["norm_weights_clip_fraction"].median())},
             {"component": "share of pairs with ESS ratio < 0.2", "value": float((df["norm_weights_ess_ratio"] < 0.2).mean())},
         ]
     return pd.DataFrame(rows)
