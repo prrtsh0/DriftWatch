@@ -193,6 +193,27 @@ CIs are wide because there are only 9 positives; interpret cautiously.
 The split is far more balanced than income (concept ≈ 85% of a much smaller
 drop) and far more stable (few low-ESS pairs).
 
+## 5.6 Temporal frontier (2018→2019, income — 15 rows)
+
+> **Interpret with caution — the inflation confound dominates.** The $50k
+> cutoff is not inflation-adjusted, so nominal income crossing $50k over time
+> creates a large, systematic *label* shift. The measured drops are therefore an
+> **upper bound** on the "real" temporal concept shift.
+
+| Quantity | Value (median across states) |
+|---|---|
+| acc_drop | 0.119 |
+| mean_psi | 1.69 |
+| concept_share | 0.248 |
+| covariate_share | ~0.001 |
+
+The very high `mean_psi` (≈1.7) and `concept_share` (≈0.25) are consistent with
+a nominal-cutoff artifact rather than a genuine P(y|x) change: the input
+distribution barely moves (`mmd` ≈ 0.001) while the label rate shifts sharply.
+This is the cleanest demonstration of the limitation in §7 — a monitoring system
+reading `mean_psi` ≈ 1.7 would alert, but the "drift" is a threshold artifact,
+not a real covariate change.
+
 ## 6. Discussion
 
 - **Cross-task non-generalization is the main finding.** On income (larger
