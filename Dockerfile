@@ -1,6 +1,10 @@
 FROM python:3.11-slim
 WORKDIR /app
 
+# Where the model + reference sample live. Set as an env var so the build-time
+# training step and the runtime app read the SAME path (app.py + train script).
+ENV DRIFTWATCH_ARTIFACTS=artifacts
+
 # Training flags for the self-contained artifact generated at build time.
 # Default: synthetic demo data (no internet needed, reliable on Render).
 # For a real model, deploy with build arg: --build-arg TRAIN_FLAGS="--state CA"
