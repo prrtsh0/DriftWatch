@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from driftwatch.data import FEATURES
 from driftwatch.monitor import DriftMonitor
+from api.dashboard import append_history, build_dashboard, load_history
 
 ART = Path(os.getenv("DRIFTWATCH_ARTIFACTS", "artifacts"))
 state = {}
@@ -53,4 +54,22 @@ def predict(batch: Batch):
 
 @app.post("/drift")
 def drift(batch: Batch):
-    return state["monitor"].check(_frame(batch))
+    result = state["monitor"].check(_frame(batch))
+    append_history(result)          # persist so the dashboard can show history
+    state["latest"] = result
+    return result
+
+
+@app.get("/dashboard")
+def dashboard():
+    """Self-contained HTML dashboard (charts rendered server-side)."""
+    history = load_history()
+    latest = state.get("latest")
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(build_dashboard(latest, history))
+
+
+@app.get("/drift-data")
+def drift_data():
+    """JSON for a frontend: latest check + history."""
+    return {"latest": state.get("latest"), "history": load_history()}

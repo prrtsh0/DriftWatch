@@ -18,6 +18,7 @@ class DriftMonitor:
         return {
             "n_rows": len(batch), "status": status,
             "mean_psi": float(psi.mean()), "max_psi": worst, "mean_ks": float(ks.mean()),
+            "feature_psi": {f: float(v) for f, v in psi.items()},
             "top_drifting_features": [{"feature": f, "psi": float(v)} for f, v in psi.nlargest(3).items()],
             "domain_auc": domain_auc(self.reference, batch) if len(batch) >= self.min_domain_n else None,
             "rule": f"status is warn at max_psi>={self.warn}, alert at >={self.alert}",
