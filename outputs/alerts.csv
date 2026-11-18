@@ -1,0 +1,5 @@
+score,threshold,harmful_if_drop>=,tp,fp,fn,tn,false_alarm_rate,miss_rate
+mean_psi,0.1,0.03,66,144,0,0,1.0,0.0
+mean_psi_numeric,0.1,0.03,0,0,66,144,0.0,1.0
+max_psi,0.1,0.03,66,144,0,0,1.0,0.0
+max_psi,0.25,0.03,66,144,0,0,1.0,0.0

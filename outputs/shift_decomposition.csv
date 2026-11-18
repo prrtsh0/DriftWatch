@@ -1,0 +1,18 @@
+component,value
+mean error at home (reference),0.18698357046158548
+mean error on target,0.2091344178651684
+mean error under covariate shift only (reweighted ref),0.18191874332131025
+covariate_share (error_cov_only - error_home),-0.005064827140275209
+concept_share (error_target - error_cov_only),0.027215674543858166
+covariate_share mean bootstrap SE,0.006110634483252215
+concept_share mean bootstrap SE,0.00908957168333317
+norm_weights_ess_ratio (median across pairs),0.7332658883144009
+norm_weights_max (median across pairs),6.969576066138474
+norm_weights_clip_fraction (median across pairs),0.0
+share of pairs with ESS ratio < 0.2,0.14285714285714285
+concept_share at cap 10 (mean),0.025698326505469948
+"concept_share at cap 20 (mean, default)",0.027215674543858166
+concept_share at cap 50 (mean),0.02767496075650527
+max drift in concept_share across caps 10/20/50,0.0019766342510353224
+concept_share excluding low-ESS pairs (ESS>=0.2),0.020688533438755957
+n pairs with ESS >= 0.2,180.0
