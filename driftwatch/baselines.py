@@ -16,13 +16,15 @@ Truth: the reference sample and the target batch, plus the trained model.
 import numpy as np
 import pandas as pd
 
-from .data import NUMERIC, FEATURES
+from .data import NUMERIC, FEATURES, task_spec
 
 
-def pred_shift(model, ref: pd.DataFrame, cur: pd.DataFrame) -> float:
+def pred_shift(model, ref: pd.DataFrame, cur: pd.DataFrame, task: str = "income") -> float:
     """Mean predicted-probability shift between reference and target."""
-    ref_p = model.predict_proba(ref[FEATURES][:2000])[:, 1].mean()
-    cur_p = model.predict_proba(cur[FEATURES])[:, 1].mean()
+    spec = task_spec(task)
+    f = spec["features"]
+    ref_p = model.predict_proba(ref[f][:2000])[:, 1].mean()
+    cur_p = model.predict_proba(cur[f])[:, 1].mean()
     return float(abs(ref_p - cur_p))
 
 
@@ -47,14 +49,16 @@ def doc(model, ref: pd.DataFrame, cur: pd.DataFrame, k: int = 100) -> float:
     return float(abs(np.sort(ref_top)[-k:].mean() - np.sort(cur_top)[-k:].mean()))
 
 
-def mmd(ref: pd.DataFrame, cur: pd.DataFrame, gamma: float = 1.0) -> float:
+def mmd(ref: pd.DataFrame, cur: pd.DataFrame, gamma: float = 1.0,
+        task: str = "income") -> float:
     """Gaussian RBF Maximum Mean Discrepancy on the numeric features.
 
     A simple, classical two-sample test that is label-free. Higher = distributions
     differ more. Uses a heuristic median-based bandwidth if gamma is None.
     """
-    r = ref[NUMERIC].values.astype(float)
-    c = cur[NUMERIC].values.astype(float)
+    spec = task_spec(task)
+    r = ref[spec["numeric"]].values.astype(float)
+    c = cur[spec["numeric"]].values.astype(float)
     n, m = len(r), len(c)
     # deterministic strided subsample (identical input -> identical subsample)
     if n > 1500:
@@ -84,17 +88,18 @@ def mmd(ref: pd.DataFrame, cur: pd.DataFrame, gamma: float = 1.0) -> float:
     )
 
 
-def compute_baselines(model, ref: pd.DataFrame, cur: pd.DataFrame) -> dict:
+def compute_baselines(model, ref: pd.DataFrame, cur: pd.DataFrame,
+                      task: str = "income") -> dict:
     """Return all baseline signals as a dict for one target pair."""
     return {
-        "pred_shift": pred_shift(model, ref, cur),
+        "pred_shift": pred_shift(model, ref, cur, task=task),
         "atc": atc(model, ref, cur),
         "doc": doc(model, ref, cur),
-        "mmd": mmd(ref, cur),
+        "mmd": mmd(ref, cur, task=task),
     }
 
 
-def _density_ratio(ref, cur, max_mult=None, cv=5, seed=0):
+def _density_ratio(ref, cur, max_mult=None, cv=5, seed=0, task: str = "income"):
     """Estimate w(x) = P_cur(x) / P_ref(x) with a domain classifier (logistic on
     primary features). w = p(origin=cur) / p(origin=ref). Used for reweighting.
 
@@ -115,7 +120,8 @@ def _density_ratio(ref, cur, max_mult=None, cv=5, seed=0):
     from sklearn.model_selection import StratifiedKFold, cross_val_predict
     from sklearn.preprocessing import StandardScaler
 
-    X = pd.concat([ref[FEATURES], cur[FEATURES]])
+    spec = task_spec(task)
+    X = pd.concat([ref[spec["features"]], cur[spec["features"]]])
     y = np.r_[np.zeros(len(ref)), np.ones(len(cur))]
     sc = StandardScaler().fit(X)
     Xs = sc.transform(X)
@@ -161,7 +167,7 @@ def _share_bootstrap_se(pred_ref, y_ref, pred_cur, y_cur, w, n_boot=200, seed=0)
     return float(np.std(cov_shares)), float(np.std(concept_shares))
 
 
-def decompose_error_shifts(model, ref, y_ref, cur, y_cur):
+def decompose_error_shifts(model, ref, y_ref, cur, y_cur, task: str = "income"):
     """Decompose the accuracy/error *increase* into a covariate-shift part and a
     concept-shift part using importance reweighting (a standard technique for
     separating these under covariate shift).
@@ -186,14 +192,15 @@ def decompose_error_shifts(model, ref, y_ref, cur, y_cur):
     # Everything computed on the FULL data: the errors use all rows (so the
     # decomposition reconciles exactly with acc_drop in experiment.py), and the
     # density-ratio weights are cross-fitted over all rows too.
-    pred_ref = model.predict(ref[FEATURES]) >= 0.5
-    pred_cur = model.predict(cur[FEATURES]) >= 0.5
+    spec = task_spec(task)
+    pred_ref = model.predict(ref[spec["features"]]) >= 0.5
+    pred_cur = model.predict(cur[spec["features"]]) >= 0.5
     err_home = float((pred_ref != np.asarray(y_ref)).mean())
     err_target = float((pred_cur != np.asarray(y_cur)).mean())
 
     # Decompose at several truncation caps to expose truncation bias: if the
     # covariate/concept split changes a lot across caps, the number is not solid.
-    ratio = _density_ratio(ref, cur)
+    ratio = _density_ratio(ref, cur, task=task)
     out = {
         "error_home": err_home, "error_target": err_target,
     }

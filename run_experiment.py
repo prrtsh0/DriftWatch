@@ -12,6 +12,7 @@ ALL_STATES = ["CA", "TX", "NY", "FL", "WA", "IL", "OH", "MI", "MN", "MS", "AL", 
 ap.add_argument("--sources", nargs="+", default=ALL_STATES)
 ap.add_argument("--targets", nargs="+", default=ALL_STATES)
 ap.add_argument("--model", default="hgb", choices=["hgb", "logreg"])
+ap.add_argument("--task", default="income", choices=["income", "employment"])
 ap.add_argument("--year", default="2018")
 ap.add_argument("--year2", default="2019", help="for --temporal: test year")
 ap.add_argument("--n-max", type=int, default=30000)
@@ -24,14 +25,16 @@ ap.add_argument("--out", default=None,
 a = ap.parse_args()
 # Safe per-mode defaults so runs cannot silently overwrite each other.
 if a.out is None:
+    task_suffix = f"_{a.task}" if a.task != "income" else ""
     if a.temporal:
-        a.out = "outputs/results_temporal.csv"
+        a.out = f"outputs/results_temporal{task_suffix}.csv"
     elif a.model == "logreg":
-        a.out = "outputs/results_logreg.csv"
+        a.out = f"outputs/results_logreg{task_suffix}.csv"
     else:
-        a.out = "outputs/results.csv"
+        a.out = f"outputs/results{task_suffix}.csv"
 if a.temporal:
     run_temporal_experiment(a.sources, a.model, a.year, a.year2, a.n_max,
-                            a.synthetic, a.out)
+                            a.synthetic, a.out, task=a.task)
 else:
-    run_experiment(a.sources, a.targets, a.model, a.year, a.n_max, a.synthetic, a.out)
+    run_experiment(a.sources, a.targets, a.model, a.year, a.n_max, a.synthetic, a.out,
+                   task=a.task)

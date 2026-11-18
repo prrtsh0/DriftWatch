@@ -5,7 +5,7 @@ from scipy.stats import ks_2samp
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.model_selection import cross_val_score
 
-from .data import CATEGORICAL, FEATURES, NUMERIC
+from .data import CATEGORICAL, FEATURES, NUMERIC, task_spec
 
 EPS = 1e-4  # avoids log(0) when a bucket is empty
 
@@ -34,28 +34,35 @@ def psi_feature(ref, cur, categorical: bool = False, bins: int = 10, top_k: int 
     return _psi(p, q)
 
 
-def psi_table(ref: pd.DataFrame, cur: pd.DataFrame) -> pd.Series:
-    return pd.Series({f: psi_feature(ref[f], cur[f], categorical=f in CATEGORICAL) for f in FEATURES})
+def psi_table(ref: pd.DataFrame, cur: pd.DataFrame, task: str = "income") -> pd.Series:
+    spec = task_spec(task)
+    return pd.Series({f: psi_feature(ref[f], cur[f], categorical=f in spec["categorical"])
+                      for f in spec["features"]})
 
 
-def ks_table(ref: pd.DataFrame, cur: pd.DataFrame) -> pd.Series:
+def ks_table(ref: pd.DataFrame, cur: pd.DataFrame, task: str = "income") -> pd.Series:
     """KS statistic = biggest gap between the two cumulative curves (numeric columns only)."""
-    return pd.Series({f: ks_2samp(ref[f], cur[f]).statistic for f in NUMERIC})
+    spec = task_spec(task)
+    return pd.Series({f: ks_2samp(ref[f], cur[f]).statistic for f in spec["numeric"]})
 
 
-def domain_auc(ref: pd.DataFrame, cur: pd.DataFrame, n: int = 4000, seed: int = 0) -> float:
+def domain_auc(ref: pd.DataFrame, cur: pd.DataFrame, n: int = 4000, seed: int = 0,
+               task: str = "income") -> float:
     """Train a model to tell old rows from new rows. AUC 0.5 = cannot tell; 1.0 = easily told."""
+    spec = task_spec(task)
     r = ref.sample(min(n, len(ref)), random_state=seed)
     c = cur.sample(min(n, len(cur)), random_state=seed)
-    X = pd.concat([r, c])[FEATURES]
+    X = pd.concat([r, c])[spec["features"]]
     y = np.r_[np.zeros(len(r)), np.ones(len(c))]
     clf = HistGradientBoostingClassifier(max_iter=100, random_state=seed)
     return float(cross_val_score(clf, X, y, cv=3, scoring="roc_auc").mean())
 
 
-def drift_summary(ref: pd.DataFrame, cur: pd.DataFrame, with_domain: bool = True) -> dict:
-    psi, ks = psi_table(ref, cur), ks_table(ref, cur)
+def drift_summary(ref: pd.DataFrame, cur: pd.DataFrame, with_domain: bool = True,
+                  task: str = "income") -> dict:
+    spec = task_spec(task)
+    psi, ks = psi_table(ref, cur, task=task), ks_table(ref, cur, task=task)
     out = {"mean_psi": psi.mean(), "max_psi": psi.max(), "mean_ks": ks.mean(),
-           "mean_psi_numeric": psi[NUMERIC].mean()}   # age, schooling, hours only (no high-cardinality codes)
-    out["domain_auc"] = domain_auc(ref, cur) if with_domain else np.nan
+           "mean_psi_numeric": psi[spec["numeric"]].mean()}   # numeric only (no high-cardinality codes)
+    out["domain_auc"] = domain_auc(ref, cur, task=task) if with_domain else np.nan
     return out
