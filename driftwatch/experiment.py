@@ -16,6 +16,12 @@ def run_temporal_experiment(states, model_kind="hgb", year="2018", year2="2019",
     """Train on a state in {year}, test on the SAME state in {year2} (temporal
     shift — the most common real-world deployment case). No label leakage: the
     reference is the year-year holdout; the target is next year's rows.
+
+    KNOWN CONFOUND: the $50k income cutoff is NOT inflation-adjusted between years
+    (Folktables uses a nominal cutoff). This adds a small, systematic label-shift
+    component to the temporal results (more people cross $50k nominal over time).
+    Treat the temporal accuracy drop as an upper bound on the "real" temporal
+    concept shift, and state this in the write-up.
     """
     rows = []
     for state in states:

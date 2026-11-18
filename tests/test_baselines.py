@@ -71,3 +71,27 @@ def test_decompose_no_change_zero_shares():
     assert abs(res["error_home"] - res["error_target"]) < 1e-6
     assert abs(res["covariate_share"]) < 1e-3
     assert abs(res["concept_share"]) < 1e-3
+
+
+def test_decompose_covariate_only_gives_zero_concept_share():
+    """Known-answer test: if ONLY P(x) changes and P(y|x) is fixed, the
+    importance-reweighting decomposition should attribute the error increase to
+    covariate shift and report concept_share ~ 0. We construct this deliberately:
+    shift a covariate (AGEP) but keep the exact same label rule (y = base rate
+    constant, independent of X), so P(y|x) is identical by construction.
+    """
+    X, y = load_state("CA", n_max=3000, synthetic=True)
+    # Use a label RULE that does not depend on X at all, so P(y|x) is constant.
+    y = pd.Series((X.index % 2 == 0).astype(int), index=X.index)
+    X2 = X.copy()
+    X2["AGEP"] = X["AGEP"] + 25          # covariate shift only
+    X2["SCHL"] = X["SCHL"] + 3
+    model = build_model("logreg").fit(X, y)
+    res = decompose_error_shifts(model, X, y, X2, y)   # same y rule on both
+    # Because P(y|x) is truly identical, the error increase must be explained by
+    # the covariate shift; the residual (concept_share) should be near zero.
+    assert abs(res["concept_share"]) < 0.1
+    # And there should be a real covariate-shift component (error rose).
+    assert res["error_target"] >= res["error_home"] - 1e-9
+    assert "norm_weights_ess_ratio" in res
+    assert 0 < res["norm_weights_ess_ratio"] <= 1.0

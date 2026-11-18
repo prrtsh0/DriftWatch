@@ -127,10 +127,14 @@ def decompose_error_shifts(model, ref, y_ref, cur, y_cur):
     - covariate_share  = error_cov_only - error_home   (part explained by P(x) change)
     - concept_share    = error_target - error_cov_only (residual = P(y|x) change
                          + interaction/approximation error)
+    - norm_weights     = a summary of how reasonable the importance weights were
+                         (max weight, and effective sample size ratio ESS/n).
     NOTE: concept_share is an upper-bound-ish estimate; it also captures any
     departure from the importance-weighting assumptions (non-overlap, estimation
     error), so it should be read as 'the part of the drop not explained by
-    covariate shift alone', not a clean causal estimate.
+    covariate shift alone', not a clean causal estimate. Report `norm_weights`
+    alongside it: a very low effective-sample-size ratio (e.g. < 0.2) means the
+    weights are unstable and concept_share is dominated by reweighting noise.
     """
     pred_ref = model.predict(ref[FEATURES]) >= 0.5
     pred_cur = model.predict(cur[FEATURES]) >= 0.5
@@ -138,9 +142,12 @@ def decompose_error_shifts(model, ref, y_ref, cur, y_cur):
     err_target = float((pred_cur != np.asarray(y_cur)).mean())
     w = _density_ratio(ref, cur)
     err_cov_only = float(np.average(pred_ref != np.asarray(y_ref), weights=w))
+    ess = (w.sum() ** 2) / (w ** 2).sum()
     return {
         "error_home": err_home, "error_target": err_target,
         "error_cov_only": err_cov_only,
         "covariate_share": err_cov_only - err_home,
         "concept_share": err_target - err_cov_only,
+        "norm_weights_max": float(w.max()),
+        "norm_weights_ess_ratio": float(ess / len(w)),
     }

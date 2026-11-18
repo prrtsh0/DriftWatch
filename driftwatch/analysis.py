@@ -96,6 +96,13 @@ def shift_decomposition(df):
         {"component": "covariate_share (error_cov_only - error_home)", "value": float(df["covariate_share"].mean())},
         {"component": "concept_share (error_target - error_cov_only)", "value": float(df["concept_share"].mean())},
     ]
+    # reliability indicators for the reweighting (low ESS => concept_share noisy)
+    if "norm_weights_ess_ratio" in df.columns:
+        rows += [
+            {"component": "norm_weights_ess_ratio (median across pairs)", "value": float(df["norm_weights_ess_ratio"].median())},
+            {"component": "norm_weights_max (median across pairs)", "value": float(df["norm_weights_max"].median())},
+            {"component": "share of pairs with ESS ratio < 0.2", "value": float((df["norm_weights_ess_ratio"] < 0.2).mean())},
+        ]
     return pd.DataFrame(rows)
 
 
