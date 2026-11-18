@@ -125,3 +125,21 @@ def test_decompose_covariate_only_gives_zero_concept_share():
     assert res["error_target"] >= res["error_home"] - 1e-9
     assert "norm_weights_ess_ratio" in res
     assert 0 < res["norm_weights_ess_ratio"] <= 1.0
+
+
+def test_decompose_concept_only_gives_zero_covariate_share():
+    """Known-answer test: if only P(y|x) changes while P(x) is identical, the
+    decomposition should report covariate_share ~ 0 and attribute the whole error
+    increase to concept_share. We use the SAME covariates for ref and cur, so the
+    importance reweighting is trivially valid (weights = 1) and any change in
+    error can only come from the changed label rule P(y|x)."""
+    X, y = load_state("CA", n_max=3000, synthetic=True)
+    y1 = (X["AGEP"] > 45).astype(int)      # label rule 1
+    y2 = (X["AGEP"] < 38).astype(int)      # label rule 2 -> different P(y|x)
+    model = build_model("logreg").fit(X, y1)
+    res = decompose_error_shifts(model, X, y1, X.copy(), y2)
+    total = res["error_target"] - res["error_home"]
+    # identical covariates => reweighting is exact => no covariate component
+    assert abs(res["covariate_share"]) < 0.05
+    # the entire error increase is concept shift (the changed P(y|x))
+    assert abs(res["concept_share"] - total) < 0.05

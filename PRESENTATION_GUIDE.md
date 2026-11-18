@@ -298,15 +298,24 @@ exactly the general-finding leap the project needed.
 
 Train on a state in 2018, test on the same state in 2019. 15 rows.
 
-- `acc_drop` median ≈ **0.12** (range 0.03–0.24) — large.
-- `mean_psi` ≈ **1.69** (huge) but `mmd` ≈ 0.001 (inputs barely move).
-- `concept_share` ≈ **0.25** — the decomposition attributes the drop to concept shift.
+**Audited result — the apparent drop is a data artifact.** The ACS recoded the
+`RELP` feature with incompatible codes (2018: 0–9; 2019: 20–29; non-overlapping).
+All other categoricals are stable.
 
-**Interpretation (critical):** the $50k cutoff is **not inflation-adjusted**.
-Over a year, more nominal incomes cross $50k → a large *label* shift with almost
-no input movement. So the temporal drop is an **upper bound** on true temporal
-concept shift — it's mostly a threshold artifact. This is the cleanest real
-demonstration that "monitoring saw big PSI" ≠ "the inputs really drifted."
+| Quantity | Full features | Without `RELP` |
+|---|---|---|
+| mean acc_drop | 0.123 | **0.006** |
+| median acc_drop | 0.119 | **0.007** |
+| mean_psi | ≈1.7 | noise |
+
+- The big PSI (≈1.7) and concept_share (≈0.25) were **entirely the recode
+  artifact** — not real drift and not (separable) inflation.
+- Removing the column: one-year temporal income shift is negligible.
+
+**Takeaway to say:** this is a clean, data-level caution — an unqualified PSI /
+alert can be driven by a schema change. The temporal frontier reports **no
+meaningful 1-year drift** for income once the recode is handled; real temporal
+shift needs a longer horizon or an inflation-adjusted cutoff.
 
 ---
 
@@ -369,9 +378,11 @@ python check_new_data.py --state NY --synthetic
     Either way, the fixed thresholds do not discriminate.
 6. **Finding 4:** it does NOT generalize to employment — nothing (not even label
    shift) tracks the small drop there. So thresholds are task-specific.
-7. **Finding 5 (temporal):** 2018→2019 shows a huge PSI but almost no input
-   movement — the non-inflation-adjusted $50k cutoff creates a label artifact.
-   A live demo of "drift ≠ accuracy."
+ 7. **Finding 5 (temporal):** the apparent 2018→2019 "drop" (PSI ≈1.7,
+    acc_drop ≈0.12) is **entirely a data-coding artifact** — the ACS recoded
+    `RELP` with incompatible categories. Removing that column → acc_drop ≈0.006.
+    A clean, data-level demo: an unqualified PSI/alert can be driven by a schema
+    change, not real drift.
 8. **Limitations:** one modality (tabular census), pairs share a source model
    (hence cluster/group LOO), $50k cutoff not state-adjusted.
 9. **Positioning:** we differ from PAPE (an estimator), TableShift (a benchmark),

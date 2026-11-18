@@ -122,8 +122,15 @@ $50k-cutoff caveat.
 
 > The employment task has **much weaker drift**: mean `acc_drop` = 0.007
 > (income: 0.022), and only 9 of 210 pairs are "harmful" (drop ≥ 0.03).
-> The headline is that **the scores that worked moderately on income do NOT
-> generalize** — this is a key cross-task finding, not a null.
+>
+> **Framing (underpowered, not "scores fail everywhere"):** with only 9 harmful
+> pairs and a mean drop near the noise floor, the employment run is a
+> **low-power** cross-task check. It does *not* prove the scores are useless in
+> general — it shows that when drift is small, no signal (including label shift)
+> is distinguishable from noise. Its real value: (a) it is a second, independent
+> domain, and (b) it demonstrates that thresholds/score rankings tuned on one
+> task do not transfer. Treat the employment correlation/importance numbers as
+> illustrative, not as a negative result of the same strength as the income ones.
 
 ### 5.1 Correlations (all weak; several near zero)
 
@@ -195,24 +202,28 @@ drop) and far more stable (few low-ESS pairs).
 
 ## 5.6 Temporal frontier (2018→2019, income — 15 rows)
 
-> **Interpret with caution — the inflation confound dominates.** The $50k
-> cutoff is not inflation-adjusted, so nominal income crossing $50k over time
-> creates a large, systematic *label* shift. The measured drops are therefore an
-> **upper bound** on the "real" temporal concept shift.
+> **Revised after audit — the apparent temporal drop is an artifact.** A
+> data-coding check (Step 1) showed the ACS recoded `RELP` (relationship) with
+> **incompatible category codes**: 2018 uses values 0–9, 2019 uses 20–29
+> (non-overlapping; means 14.3 vs 34.7). All other categoricals are stable
+> (max frequency diff < 0.025). So a model trained on 2018 sees 2019 `RELP`
+> values it never saw.
 
-| Quantity | Value (median across states) |
-|---|---|
-| acc_drop | 0.119 |
-| mean_psi | 1.69 |
-| concept_share | 0.248 |
-| covariate_share | ~0.001 |
+| Quantity | Full features | **Without `RELP`** |
+|---|---|---|
+| mean acc_drop | 0.123 | **0.006** |
+| median acc_drop | 0.119 | **0.007** |
+| mean_psi | ≈1.7 | ≈ noise |
+| share of states where full drop > no-RELP drop | — | 1.00 |
 
-The very high `mean_psi` (≈1.7) and `concept_share` (≈0.25) are consistent with
-a nominal-cutoff artifact rather than a genuine P(y|x) change: the input
-distribution barely moves (`mmd` ≈ 0.001) while the label rate shifts sharply.
-This is the cleanest demonstration of the limitation in §7 — a monitoring system
-reading `mean_psi` ≈ 1.7 would alert, but the "drift" is a threshold artifact,
-not a real covariate change.
+After removing the non-comparable column, the one-year temporal income shift is
+**negligible** (~0.006 accuracy drop; input PSI collapses to noise). The earlier
+PSI ≈1.7 / concept_share ≈0.25 all came from the recode, not from real drift or
+even from the inflation confound (which cannot be separated here). This is a
+clean, *data-level* demonstration that an unqualified PSI/alert can be driven by
+a schema change. The temporal frontier therefore reports **no meaningful 1-year
+drift** for income once the recode is handled; a longer horizon or an
+inflation-adjusted cutoff is needed to study real temporal shift.
 
 ## 6. Discussion
 
@@ -244,8 +255,11 @@ not a real covariate change.
   upper bound on true concept shift; we report per-source and low-ESS variants so
   the reader sees the sensitivity. A state-adjusted threshold (cost-of-living
   indexed) is future work.
-- 2018→2019 cutoff not inflation-adjusted → temporal accuracy drop is an upper
-  bound on temporal concept shift.
+- Temporal frontier: the 2018→2019 comparison is confounded by the ACS `RELP`
+  recode (incompatible category codes), which we isolate by re-running without
+  that column (drop shrinks 0.123 → 0.006). The inflation confound remains but
+  cannot be separated within one year; a longer horizon or an inflation-adjusted
+  cutoff is future work.
 - One modality (tabular census), two tasks, two frontiers. Generalization to
   image/text is future work.
 - Pairs share source model → group LOO reported.
