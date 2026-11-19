@@ -129,11 +129,11 @@ _SITE_CSS = """
 
 _DASHBOARD_CSS = """
   .wrap { max-width: 960px; margin: 24px auto; padding: 0 16px; }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
-  .card { background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .card { background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.04); min-width: 0; }
   .card.success { border-left: 4px solid #2da44e; } .card.warning { border-left: 4px solid #bf8700; } .card.danger { border-left: 4px solid #cf222e; }
   .k { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #57606a; }
-  .v { font-size: 22px; font-weight: 600; margin-top: 4px; }
+  .v { font-size: 19px; font-weight: 600; margin-top: 4px; line-height: 1.25; overflow-wrap: anywhere; word-break: break-word; font-variant-numeric: tabular-nums; }
   section { background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; }
   h3 { margin: 4px 0 10px; font-size: 15px; }
   img { max-width: 100%; height: auto; }
