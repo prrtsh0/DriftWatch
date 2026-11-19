@@ -129,7 +129,7 @@ def drift(batch: Batch):
 def dashboard():
     """Self-contained HTML dashboard (charts rendered server-side)."""
     history = load_history()
-    latest = state.get("latest")
+    latest = state.get("latest") or (history[-1] if history else None)
     from fastapi.responses import HTMLResponse
     return HTMLResponse(build_dashboard(latest, history))
 
@@ -137,4 +137,6 @@ def dashboard():
 @app.get("/drift-data")
 def drift_data():
     """JSON for a frontend: latest check + history."""
-    return {"latest": state.get("latest"), "history": load_history()}
+    history = load_history()
+    latest = state.get("latest") or (history[-1] if history else None)
+    return {"latest": latest, "history": history}
