@@ -105,42 +105,42 @@ def _feature_psi_chart(phi: dict) -> str:
 
 
 _SITE_CSS = """
-  body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #f6f8fa; color: #1b1f23; }}
-  .site-head {{ background: #24292f; color: #fff; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 12px 24px; }}
-  .site-head .brand {{ display: flex; flex-direction: column; line-height: 1.2; }}
-  .site-head .brand a {{ color: #fff; text-decoration: none; font-size: 20px; font-weight: 600; }}
-  .site-head .brand .sub {{ font-size: 12px; opacity: .75; }}
-  .site-nav {{ display: flex; gap: 6px; flex-wrap: wrap; }}
-  .site-nav a {{ color: #c9d1d9; text-decoration: none; font-size: 14px; padding: 6px 12px; border-radius: 6px; }}
-  .site-nav a:hover {{ background: #32383f; color: #fff; }}
-  .site-nav a.active {{ background: #1f6feb; color: #fff; }}
-  .site-foot {{ text-align: center; color: #8b949e; font-size: 12px; padding: 20px 16px; border-top: 1px solid #e1e4e8; margin-top: 24px; }}
-  .hero {{ max-width: 960px; margin: 48px auto 32px; padding: 0 16px; text-align: center; }}
-  .hero h1 {{ font-size: 34px; margin: 0 0 10px; }}
-  .hero p {{ color: #57606a; font-size: 17px; max-width: 680px; margin: 8px auto 24px; }}
-  .cta {{ display: inline-block; background: #1f6feb; color: #fff; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 6px; }}
-  .cta.secondary {{ background: #eaeef2; color: #1b1f23; }}
-  .features {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; max-width: 960px; margin: 0 auto 48px; padding: 0 16px; }}
-  .feature {{ background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; padding: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }}
-  .feature h3 {{ margin: 0 0 6px; font-size: 16px; }}
-  .feature p {{ margin: 0; color: #57606a; font-size: 14px; }}
-  .feature code {{ background: #f0f2f4; padding: 1px 5px; border-radius: 4px; }}
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #f6f8fa; color: #1b1f23; }
+  .site-head { background: #24292f; color: #fff; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 12px 24px; }
+  .site-head .brand { display: flex; flex-direction: column; line-height: 1.2; }
+  .site-head .brand a { color: #fff; text-decoration: none; font-size: 20px; font-weight: 600; }
+  .site-head .brand .sub { font-size: 12px; opacity: .75; }
+  .site-nav { display: flex; gap: 6px; flex-wrap: wrap; }
+  .site-nav a { color: #c9d1d9; text-decoration: none; font-size: 14px; padding: 6px 12px; border-radius: 6px; }
+  .site-nav a:hover { background: #32383f; color: #fff; }
+  .site-nav a.active { background: #1f6feb; color: #fff; }
+  .site-foot { text-align: center; color: #8b949e; font-size: 12px; padding: 20px 16px; border-top: 1px solid #e1e4e8; margin-top: 24px; }
+  .hero { max-width: 960px; margin: 48px auto 32px; padding: 0 16px; text-align: center; }
+  .hero h1 { font-size: 34px; margin: 0 0 10px; }
+  .hero p { color: #57606a; font-size: 17px; max-width: 680px; margin: 8px auto 24px; }
+  .cta { display: inline-block; background: #1f6feb; color: #fff; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 6px; }
+  .cta.secondary { background: #eaeef2; color: #1b1f23; }
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; max-width: 960px; margin: 0 auto 48px; padding: 0 16px; }
+  .feature { background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; padding: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .feature h3 { margin: 0 0 6px; font-size: 16px; }
+  .feature p { margin: 0; color: #57606a; font-size: 14px; }
+  .feature code { background: #f0f2f4; padding: 1px 5px; border-radius: 4px; }
 """
 
 _DASHBOARD_CSS = """
-  .wrap {{ max-width: 960px; margin: 24px auto; padding: 0 16px; }}
-  .cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }}
-  .card {{ background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }}
-  .card.success {{ border-left: 4px solid #2da44e; }} .card.warning {{ border-left: 4px solid #bf8700; }} .card.danger {{ border-left: 4px solid #cf222e; }}
-  .k {{ font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #57606a; }}
-  .v {{ font-size: 22px; font-weight: 600; margin-top: 4px; }}
-  section {{ background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; }}
-  h3 {{ margin: 4px 0 10px; font-size: 15px; }}
-  img {{ max-width: 100%; height: auto; }}
-  table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
-  th, td {{ text-align: left; padding: 6px 8px; border-bottom: 1px solid #eaeef2; }}
-  th {{ color: #57606a; font-weight: 600; }}
-  .none {{ color: #8b949e; font-style: italic; }}
+  .wrap { max-width: 960px; margin: 24px auto; padding: 0 16px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .card { background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .card.success { border-left: 4px solid #2da44e; } .card.warning { border-left: 4px solid #bf8700; } .card.danger { border-left: 4px solid #cf222e; }
+  .k { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #57606a; }
+  .v { font-size: 22px; font-weight: 600; margin-top: 4px; }
+  section { background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; }
+  h3 { margin: 4px 0 10px; font-size: 15px; }
+  img { max-width: 100%; height: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eaeef2; }
+  th { color: #57606a; font-weight: 600; }
+  .none { color: #8b949e; font-style: italic; }
 """
 
 
