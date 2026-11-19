@@ -1,107 +1,124 @@
 # DriftWatch
 
-A monitoring system for deployed ML models, plus a study of whether label-free drift scores predict real accuracy loss.
+Monitor a **deployed ML model for data drift using only its inputs — no ground-truth labels required.**
 
-**Research question:** across real US census shifts between states, which kinds of shift (inputs, labels, input-label relationship) explain accuracy loss, and how much of it do common drift scores (PSI, KS, domain-classifier AUC) capture?
+DriftWatch is two things in one repo:
 
-## Setup (Windows PowerShell, from this folder)
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python -m pytest -q                 # all tests should pass
-```
+1. **A live monitoring service** — a FastAPI app that scores your deployed model against a stored reference sample
+   and shows the result on a self-contained dashboard.
+2. **A research study** — does label-free drift (PSI, KS, domain-classifier AUC) predict *real* accuracy loss across
+   natural US Census shifts? (income prediction, ACS 2018, 15 states).
 
-## Run order
-1. `python run_experiment.py --synthetic --n-max 8000`   (no internet; checks the code works. NOT research results)
-2. `python run_experiment.py`   (real census data; first run downloads each state from census.gov, takes a while)
-   Try also `--model logreg`, and `--out outputs/results_logreg.csv`.
-3. `python run_analysis.py`   (tables + chart in `outputs/`)
-4. `python train_service_model.py`  then  `python -m uvicorn api.app:app --reload`  and open http://127.0.0.1:8000/docs
-   (add `--synthetic` to step 4's first command if you have no data yet)
+> Live demo: [https://driftwatch-0tk3.onrender.com/dashboard](https://driftwatch-0tk3.onrender.com/dashboard) ·
+> API docs: [https://driftwatch-0tk3.onrender.com/docs](https://driftwatch-0tk3.onrender.com/docs)
 
-## What each file does
-| File | Job |
+---
+
+## Why label-free drift monitoring?
+
+Once a model is deployed, you rarely have true labels in real time. So you can't measure accuracy directly.
+DriftWatch detects that the *inputs* are changing relative to what the model trained on —
+a leading indicator that accuracy may drop. It rates every batch:
+
+| Status | Condition (max PSI) |
 |---|---|
-| driftwatch/data.py | loads one US state (Folktables income task), or synthetic data for tests |
-| driftwatch/drift.py | PSI, KS, domain-classifier AUC: drift scores that never use labels |
-| driftwatch/model.py | the two models: gradient boosting and logistic regression |
-| driftwatch/experiment.py | trains on a source state, tests on many target states, records drift scores AND true accuracy drop |
-| driftwatch/analysis.py | correlations with bootstrap intervals, decomposition, false-alarm/miss rates, chart |
-| driftwatch/monitor.py | the live drift checker used by the API (warn at PSI 0.1, alert at 0.25) |
-| api/app.py | FastAPI service: /predict and /drift |
-| tests/ | unit tests including a PSI hand-calculation |
+| ✅ `ok` | < 0.10 |
+| ⚠️ `warn` | 0.10 – 0.25 |
+| 🚨 `alert` | ≥ 0.25 |
 
-## Live API + dashboard
+## Dashboard
 
-The monitoring logic ships as a FastAPI service. Start it locally:
+The dashboard renders the monitor status, the per-batch history, and the top drifting features (charts are drawn
+server-side with matplotlib and embedded as base64 — no internet/CDN needed).
+
+![Status history](docs/chart_status_history.png)
+
+![Top drifting features](docs/chart_top_features.png)
+
+## Quickstart (Windows PowerShell)
 
 ```powershell
-python train_service_model.py        # (optionally --synthetic) writes artifacts/
-python -m uvicorn api.app:app --reload
-# open http://127.0.0.1:8000/docs  (Swagger UI) or /dashboard
+cd C:\Users\Pritesh\Downloads\driftwatch\driftwatch
+.venv\Scripts\Activate.ps1            # activate env (one-time per shell)
+python -m uvicorn api.app:app --reload --port 8001
 ```
 
-Endpoints:
-| Route | Purpose |
+Then open:
+
+- Dashboard → http://127.0.0.1:8001/dashboard
+- API docs  → http://127.0.0.1:8001/docs
+
+> Note: use port `8001` if `8000` is already taken on your machine.
+>
+> First-time-only setup (if you have not built the model yet): `python -m venv .venv`, `pip install -r requirements.txt`,
+> `python train_service_model.py` (needs internet; add `--synthetic` to use test data).
+
+## API reference
+
+| Method | Endpoint | Description | Example |
+|---|---|---|---|
+| `GET` | `/health` | Model status + required features | `Invoke-RestMethod http://127.0.0.1:8001/health` |
+| `POST` | `/predict` | Score a batch → `probability_income_over_50k` + `prediction` | JSON `{"records":[{...10 features...}]}` |
+| `POST` | `/drift` | Check a batch for drift → status + per-feature scores | JSON `{"records":[{...}]}` |
+| `GET` | `/dashboard` | HTML dashboard | browser |
+| `GET` | `/drift-data` | Latest check + history as JSON | `Invoke-RestMethod http://127.0.0.1:8001/drift-data` |
+
+All features: `AGEP COW SCHL MAR OCCP POBP RELP WKHP SEX RAC1P`.
+
+## How the drift scores work
+
+All scores compare a **new batch** to a stored **reference sample** of the model's training data. None need labels.
+
+- **PSI (Population Stability Index)** — bins each feature into the same buckets as the reference, then measures how
+  much the *distribution* of the batch has shifted. PSI is the headline score and drives the ok/warn/alert status.
+- **KS (Kolmogorov–Smirnov)** — the largest vertical gap between the batch's and reference's *cumulative* distributions
+  for a numeric feature. Catches location shifts PSI can smooth over.
+- **Domain-classifier AUC** — train a quick classifier to tell "reference row" vs "new row" apart. AUC ≈ 0.5 means the
+  new data is indistinguishable from reference (no drift); AUC → 1.0 means the new data is highly separable (strong drift).
+- **`pred_shift`** — the model-aware signal (the study's best predictor): how much the model's *average output probability*
+  moved from its reference value.
+
+Each per-feature score is computed, then aggregated into a single `status` via the thresholds above.
+
+## Research summary
+
+**Question:** across real state-to-state census shifts, which kinds of shift explain accuracy loss, and how much of it do
+common drift scores capture?
+
+**Setup:** train on one source state, evaluate on every other state (15 states → 210 pairs), recording both drift scores
+(no labels) and the true accuracy drop. Two tasks (income, employment) and a temporal 2018→2019 run.
+
+**Key findings** (see `docs/PAPER.md` and `docs/RESEARCH_GAP.md` for the full story):
+- Drift scores track accuracy loss for **input** shifts well, but miss **label shift** (a change in the base rate), because
+  input-only scores can't see the label distribution change.
+- `pred_shift` (the model's output drift) is the strongest, most consistent predictor of accuracy loss.
+- Standard fixed thresholds (0.10 / 0.25) are reasonable defaults but are not calibrated to any specific model.
+
+## Repo layout
+
+```
+api/                 # FastAPI service (app.py, dashboard.py)
+driftwatch/          # research pipeline (data, drift, model, experiment, monitor)
+tests/               # pytest suite (28 tests)
+data/ artifacts/     # datasets, trained model, reference sample, monitor history
+outputs/             # experiment results (CSV + charts), archive/ for older runs
+docs/                # paper, research gap, handoff, presentation guide
+```
+
+## Docs
+
+| Document | Purpose |
 |---|---|
-| `GET /health` | service status, whether a model is loaded, feature list |
-| `POST /predict` | probability of income > $50k + binary prediction for a batch |
-| `POST /drift` | compare a new batch against the stored reference: PSI/KS/domain-AUC, status `ok/warn/alert` |
-| `GET /dashboard` | self-contained HTML dashboard (server-rendered charts, no CDN) |
-| `GET /drift-data` | JSON for a custom frontend |
+| `docs/PAPER.md` | paper draft |
+| `docs/RESEARCH_GAP.md` | the research gap, how to explain it |
+| `docs/PRESENTATION_GUIDE.md` | full presentation script |
+| `docs/HANDOFF.md` / `docs/PROJECT_STRUCTURE.md` | repo briefing for a new developer |
+| `docs/DEPLOYMENT.md` | how the app is deployed to Render |
+| `docs/CODE_GUIDE.md` | code-only map of the repo |
 
-Example request (`/predict` — all 10 features required):
+## Limitations
 
-```bash
-curl -X POST http://127.0.0.1:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '{"records":[{"AGEP":45,"COW":5,"SCHL":18,"MAR":2,"OCCP":2200,"POBP":6,"RELP":0,"WKHP":40,"SEX":1,"RAC1P":1}]}'
-```
-
-```bash
-curl -X POST http://127.0.0.1:8000/drift \
-  -H "Content-Type: application/json" \
-  -d '{"records":[{...10 features...},{...}]}'
-```
-
-Offline check of a new CSV or a census state: `python check_new_data.py my_rows.csv` or `python check_new_data.py --state NY`.
-
-> **Important limit:** the monitor and `/drift` see only *inputs*. They cannot
-> report accuracy until true labels arrive — which is exactly the gap the study
-> investigates.
-
-## Deployment (Render)
-
-The **API + dashboard** are deployable as a demo service; the research/experiment
-pipeline stays local (it is a batch job, not a web service).
-
-- `render.yaml` — Render Blueprint (web service, Docker, `/health` check, auto-deploy).
-- `Dockerfile` — builds a self-contained image: it **trains a model during the
-  build** (synthetic by default, since `artifacts/` is gitignored) so the app
-  starts with a model ready.
-
-Deploy steps:
-1. Push this repo to GitHub.
-2. Render → **New → Blueprint → connect the repo** (Render reads `render.yaml`).
-3. After the build finishes, open `https://<service>.onrender.com/health`.
-
-To serve a real income model instead of the synthetic demo, build with
-`--build-arg TRAIN_FLAGS="--state CA"` (downloads ACS 2018 CA during build).
-
-> Caveats: free-tier instances sleep after ~15 min idle (cold start ~30–60s) —
-> fine for a demo, not for continuous monitoring; endpoints are unauthenticated,
-> so this is for demo/education only.
-
-## You must be able to explain (before presenting)
-- Drift vs accuracy drop: why one can happen without the other.
-- PSI by hand: the 50/50 vs 70/30 example gives about 0.17.
-- KS: biggest gap between two cumulative curves. Domain AUC: can a model tell old rows from new rows?
-- Label shift vs input drift: input scores cannot see a change in the label rate or the input-label link.
-- Your own results table: what correlates, what does not, and one surprise.
-
-## Limits (put these in the paper)
-- One task (income prediction), tabular data, one survey year unless you add more.
-- State pairs share a source model, so rows are not fully independent; bootstrap intervals are approximate.
-- Synthetic results from this repo are for testing only.
-- Related work to cite and differ from: PAPE (NeurIPS 2025), TableShift (NeurIPS 2023), Failing Loudly (NeurIPS 2019).
+- One primary task (income), tabular data, one survey year (temporal run is a 15-row pilot).
+- Source states share a model, so pairs are not fully independent; bootstrap intervals are approximate.
+- Synthetic results in this repo are for testing only; the deployed demo uses seeded demo data.
+- The free-tier Render instance sleeps after ~15 min idle (cold start ~30–60 s) — fine for a demo, not continuous monitoring.
