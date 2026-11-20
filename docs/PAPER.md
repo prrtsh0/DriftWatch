@@ -1,3 +1,29 @@
+Most of the weak spots are the ones we already found: the decomposition, the mislabelled ATC/DoC, and the temporal run. Fixing those and understanding every metric is a good use of the week. Below are the videos and papers I found, then a plan to Friday 27 Nov.
+
+I haven’t watched any of these. I only saw their titles and listings.
+
+Videos
+Drift and monitoring: Evidently AI’s free ML observability course has a YouTube playlist, a welcome video and a course site. The course has a module on data and prediction drift, an optional deep dive on drift detection methods, and a code walkthrough. This is the best fit for your project. 
+evidentlyai
+evidentlyai
+Playlist: https://www.youtube.com/playlist?list=PL9omX6impEuOpTezeRF-M04BW3VfnPBRF
+Course site: https://learn.evidentlyai.com
+A second walkthrough: Krish Naik’s Evidently tutorial is a 5-video set curated by Class Central. I can’t vouch for its quality: https://classcentral.com/course/youtube-evidently-ai-tutorial-open-source-ml-models-monitoring-and-observability-206031 
+classcentral
+Gradient boosting (for the “HGB vs random forest” question): StatQuest’s Gradient Boost has four parts, about 16, 27, 17 and 37 minutes. Watch parts 1 and 3. https://www.classcentral.com/course/youtube-gradient-boost-45647 
+onrender
+Basics: StatQuest’s list also covers R-squared, the confusion matrix, logistic regression, and “ROC and AUC, Clearly Explained!” https://www.classcentral.com/course/youtube-statquest-90294 
+classcentral
+classcentral
+
+I found no good video for MMD, importance weighting, ATC or Failing Loudly. Read these instead:
+
+Failing Loudly: it studies shift detection under artificial perturbations of covariates and labels. That differs from your natural state-to-state shifts. https://arxiv.org/abs/1810.11953v1 
+arxiv
+ATC paper: it learns a confidence threshold and predicts accuracy as the fraction of target examples above it. Your “top-100 shift” is not that. https://arxiv.org/abs/2201.04234 
+arxiv
+MMD: Gretton et al., https://arxiv.org/pdf/0805.2368.pdf, and the shorter CMU notes, https://www.stat.cmu.edu/~ryantibs/journalclub/mmd.pdf
+
 # DriftWatch — Paper Draft
 
 > Working title: **"When Drift Alerts Lie: Decomposing What Label-Free Drift
