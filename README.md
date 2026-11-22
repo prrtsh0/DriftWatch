@@ -1,4 +1,4 @@
-# DriftWatch (Updating)
+# DriftWatch
 
 Monitor a **deployed ML model for data drift using only its inputs — no ground-truth labels required.**
 
